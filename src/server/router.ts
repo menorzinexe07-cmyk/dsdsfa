@@ -1,6 +1,6 @@
 import { authenticate, handleHealth, handlePurchase, handleSale, handleSaleStatus, handleVenda, json } from "./api";
 import { adminRoutes } from "./adminApi";
-import { loginRedirect, logout } from "./auth";
+import { loginRedirect, logout, logoutEverywhere } from "./auth";
 import { sameOrigin, userRoutes, type Route } from "./dashboardApi";
 import { getStats, listCustomers, listSales } from "./queries";
 import { db } from "./db";
@@ -49,6 +49,7 @@ const venda: Route[] = [
 
 const auth: Route[] = [
   ["GET", /^\/api\/auth\/discord$/, () => loginRedirect()],
+  ["POST", /^\/api\/auth\/logout-all$/, (req) => (sameOrigin(req) ? logoutEverywhere(req) : json({ error: "bad_origin" }, 403))],
   ["POST", /^\/api\/auth\/logout$/, (req) => (sameOrigin(req) ? logout(req) : json({ error: "bad_origin" }, 403))],
 ];
 
