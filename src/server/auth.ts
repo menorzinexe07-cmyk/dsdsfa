@@ -13,50 +13,66 @@ export function loginRedirect(): Response {
   const url = new URL("https://discord.com/oauth2/authorize");
   url.search = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID!, response_type: "code",
-    redirect_uri: process.env.DISCORD_REDIRECT_URI!, scope: "identify", state, prompt: "none",
+    redirect_uri: process.env.DISCORD_REDIRECT_URI!, scope: "identify", state,
   }).toString();
   const h = new Headers({ Location: url.toString() });
   h.append("Set-Cookie", cookie("zy_state", state, 600));
   return new Response(null, { status: 302, headers: h });
 }
 
+const fail = (code: string) => new Response(null, { status: 302, headers: { Location: `/login?erro=${code}` } });
+const TIMEOUT = () => AbortSignal.timeout(8000); // nunca deixa o login pendurado
+
 export async function handleCallback(req: Request): Promise<Response> {
-  const u = new URL(req.url);
-  const code = u.searchParams.get("code"), state = u.searchParams.get("state");
-  const saved = readCookie(req, "zy_state");
-  const ok = !!(code && state && saved && state.length === saved.length &&
-    timingSafeEqual(Buffer.from(state), Buffer.from(saved)));
-  if (!ok) return new Response(null, { status: 302, headers: { Location: "/login?erro=state" } });
+  let step = "state";
+  try {
+    const u = new URL(req.url);
+    const code = u.searchParams.get("code"), state = u.searchParams.get("state");
+    const saved = readCookie(req, "zy_state");
+    const ok = !!(code && state && saved && state.length === saved.length &&
+      timingSafeEqual(Buffer.from(state), Buffer.from(saved)));
+    if (!ok) return fail("state");
 
-  const tok = await fetch("https://discord.com/api/oauth2/token", {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: process.env.DISCORD_CLIENT_ID!, client_secret: process.env.DISCORD_CLIENT_SECRET!,
-      grant_type: "authorization_code", code: code!, redirect_uri: process.env.DISCORD_REDIRECT_URI!,
-    }),
-  });
-  if (!tok.ok) return new Response(null, { status: 302, headers: { Location: "/login?erro=token" } });
-  const { access_token } = await tok.json();
+    step = "token";
+    const tok = await fetch("https://discord.com/api/oauth2/token", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: TIMEOUT(),
+      body: new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID!, client_secret: process.env.DISCORD_CLIENT_SECRET!,
+        grant_type: "authorization_code", code: code!, redirect_uri: process.env.DISCORD_REDIRECT_URI!,
+      }),
+    });
+    if (!tok.ok) { console.error("[oauth] token HTTP", tok.status, (await tok.text()).slice(0, 200)); return fail("token"); }
+    const { access_token } = await tok.json();
 
-  const me = await fetch("https://discord.com/api/users/@me", { headers: { Authorization: `Bearer ${access_token}` } });
-  if (!me.ok) return new Response(null, { status: 302, headers: { Location: "/login?erro=discord" } });
-  const user = await me.json(); // o access_token é descartado: não é armazenado
+    step = "usuario";
+    const me = await fetch("https://discord.com/api/users/@me", { headers: { Authorization: `Bearer ${access_token}` }, signal: TIMEOUT() });
+    if (!me.ok) { console.error("[oauth] users/@me HTTP", me.status); return fail("usuario"); }
+    const user = await me.json(); // o access_token é descartado: não é armazenado
 
-  await db.from("profiles").upsert({
-    discord_id: String(user.id), username: user.username, global_name: user.global_name ?? null,
-    avatar: user.avatar ?? null, last_seen_at: new Date().toISOString(),
-  }, { onConflict: "discord_id" });
+    step = "banco";
+    const up = await db.from("profiles").upsert({
+      discord_id: String(user.id), username: user.username, global_name: user.global_name ?? null,
+      avatar: user.avatar ?? null, last_seen_at: new Date().toISOString(),
+    }, { onConflict: "discord_id" });
+    if (up.error) throw new Error(up.error.message);
 
-  const token = randomBytes(32).toString("base64url");
-  const days = 7;
-  await db.from("sessions").insert({
-    token_hash: sha256(token), discord_id: String(user.id),
-    expires_at: new Date(Date.now() + days * 864e5).toISOString(),
-  });
-  const h = new Headers({ Location: "/dashboard" });
-  h.append("Set-Cookie", cookie("zy_session", token, days * 86400));
-  h.append("Set-Cookie", cookie("zy_state", "", 0));
-  return new Response(null, { status: 302, headers: h });
+    step = "sessao";
+    const token = randomBytes(32).toString("base64url");
+    const days = 7;
+    const ins = await db.from("sessions").insert({
+      token_hash: sha256(token), discord_id: String(user.id),
+      expires_at: new Date(Date.now() + days * 864e5).toISOString(),
+    });
+    if (ins.error) throw new Error(ins.error.message);
+
+    const h = new Headers({ Location: "/dashboard" });
+    h.append("Set-Cookie", cookie("zy_session", token, days * 86400));
+    h.append("Set-Cookie", cookie("zy_state", "", 0));
+    return new Response(null, { status: 302, headers: h });
+  } catch (e) {
+    console.error("[oauth] falhou na etapa", step, (e as Error).message); // aparece nos logs da Vercel
+    return fail(step);
+  }
 }
 
 export async function logout(req: Request): Promise<Response> {
