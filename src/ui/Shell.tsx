@@ -84,6 +84,8 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
   const item = (href: string, label: string, ext = false, beta = false) =>
     <a key={href} href={href} className={!ext && p === href ? "on" : ""} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})}>{label}{beta && <em className="pillbeta">Beta</em>}</a>;
   const base = bot ? `/dashboard/bots/${encodeURIComponent(bot.id)}` : "";
+  const outAll = async () => { if (!confirm("Sair de todos os aparelhos? Você precisará entrar de novo em cada um.")) return;
+    await api("/api/auth/logout-all", { method: "POST" }).catch(() => {}); window.location.href = "/"; };
   const out = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); window.location.href = "/"; };
   return <div className="dash">
     {(leaving || (me.loading && !me.data)) && <PageLoader />}
@@ -99,7 +101,8 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
       <div className="dtop"><span className="crumb">{bot?.name ?? ""}</span>
         {me.data && <div className="user"><img src={avatarUrl(me.data.discord_id, me.data.avatar)} alt="" />
           <span>{me.data.global_name ?? me.data.username}</span><button className="btn sm" onClick={out}>Sair</button></div>}</div>
-      <div className="dbody"><Async q={me}>{() => children}</Async></div>
+      <div className="dbody"><Async q={me}>{() => children}</Async>
+        <p className="dfoot">Você permanece conectado neste aparelho por até 60 dias de uso. <button className="linkbtn" onClick={outAll}>Sair de todos os aparelhos</button></p></div>
     </section>
   </div>;
 }
