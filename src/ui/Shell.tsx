@@ -65,7 +65,7 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
         {item("/dashboard", "Início")}{item("/dashboard/bots", "Meus bots")}
         {bot && <><hr /><small>{bot.name ?? "Bot"}</small>
           {item(`${base}/visao-geral`, "Visão geral")}{item(`${base}/clientes`, "Meus Clientes")}{item(`${base}/vendas`, "Vendas")}
-          {item(INVITE, "Suporte", true)}{item(`${base}/integracao`, "API e integração")}{item(`${base}/configuracoes`, "Configurações")}</>}
+          {item(INVITE, "Suporte", true)}{item(`${base}/configuracoes`, "Configurações")}</>}
         {me.data?.is_admin && <><hr />{item("/admin", "Administração")}</>}
       </nav></aside>
     <section>
