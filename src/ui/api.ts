@@ -1,10 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 
+// Cache de leituras (só no navegador, por aba): mostra o último resultado na hora e atualiza em seguida.
+const TTL = 5 * 60_000;
+const memory = new Map<string, { t: number; data: unknown }>();
+const store = () => { try { return window.sessionStorage; } catch { return null; } };
+function cacheGet(path: string): unknown | undefined {
+  const m = memory.get(path); if (m && Date.now() - m.t < TTL) return m.data;
+  try { const raw = store()?.getItem("zy:" + path); if (raw) { const v = JSON.parse(raw); if (Date.now() - v.t < TTL) { memory.set(path, v); return v.data; } } } catch { /* ignora */ }
+}
+function cacheSet(path: string, data: unknown) {
+  const v = { t: Date.now(), data }; memory.set(path, v);
+  try { store()?.setItem("zy:" + path, JSON.stringify(v)); } catch { /* cota cheia: tudo bem */ }
+}
+export function cacheClear() {
+  memory.clear();
+  try { const s = store(); if (s) Object.keys(s).filter((k) => k.startsWith("zy:")).forEach((k) => s.removeItem(k)); } catch { /* ignora */ }
+}
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string) { super(code); }
 }
 
 export async function api<T = any>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
+  if (init?.method && init.method !== "GET") cacheClear(); // qualquer alteração invalida o cache
   let r: Response;
   try {
     r = await fetch(path, { credentials: "same-origin", ...init,
@@ -21,7 +39,13 @@ export function useApi<T = any>(path: string | null) {
   const load = useCallback(() => {
     if (!path) return;
     set((x) => ({ ...x, loading: true, error: undefined }));
-    api<T>(path).then((data) => set({ data, loading: false })).catch((error) => set({ error, loading: false }));
+    api<T>(path).then((data) => { cacheSet(path, data); set({ data, loading: false }); })
+      .catch((error) => set({ error, loading: false }));
+  }, [path]);
+  useEffect(() => { // depois de montar (evita divergir do HTML do servidor): mostra o cache enquanto atualiza
+    if (!path) return;
+    const hit = cacheGet(path) as T | undefined;
+    if (hit !== undefined) set((x) => (x.data === undefined ? { ...x, data: hit } : x));
   }, [path]);
   useEffect(() => { load(); }, [load]);
   return { ...s, reload: load };
