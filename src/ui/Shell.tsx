@@ -5,8 +5,33 @@ import { Async } from "./kit";
 
 export const Logo = () => <a href="/" className="logo"><span>Z</span>Zyra Apps</a>;
 
+/** Efeitos do site público: spotlight que segue o mouse e entrada suave ao rolar. */
+function useSiteEffects() {
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.(".spot") as HTMLElement | null;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+      el.style.setProperty("--my", `${e.clientY - r.top}px`);
+    };
+    document.addEventListener("pointermove", move, { passive: true });
+    let io: IntersectionObserver | undefined;
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches && "IntersectionObserver" in window) {
+      io = new IntersectionObserver((es) => es.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("in"); io!.unobserve(en.target); } }),
+        { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+      document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((el) => {
+        if (el.getBoundingClientRect().top < window.innerHeight) return; // já visível: não esconde
+        el.classList.add("rv-pre"); io!.observe(el);
+      });
+    }
+    return () => { document.removeEventListener("pointermove", move); io?.disconnect(); };
+  }, []);
+}
+
 export function Public({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  useSiteEffects();
   return <div className="site">
     <header className="nav"><div className="wrap">
       <Logo />
