@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "./db";
-import { ensureTestBot, getMyBots, getSessionUser, isAdmin, requireBotOwner } from "./auth";
+import { ensureTestBot, getMyBots, getSessionUser, isAdmin, renewSession, requireBotOwner } from "./auth";
 import { createCredential, json } from "./api";
 import { getStats, listCustomers, listSales } from "./queries";
 import { ShardError, getShardApp, getShardStatus, isShardId, renameShardApp, setShardPower, syncShardName } from "./shard";
@@ -42,7 +42,11 @@ export const userRoutes: Route[] = [
     const uid = await getSessionUser(req);
     if (!uid) return json({ error: "session_expired" }, 401);
     const { data } = await db.from("profiles").select("discord_id,username,global_name,avatar").eq("discord_id", uid).single();
-    return json({ ...data, is_admin: await isAdmin(req) });
+    const renewed = await renewSession(req); // mantém o aparelho conectado enquanto ele for usado
+    const body = JSON.stringify({ ...data, is_admin: await isAdmin(req) });
+    const h = new Headers({ "content-type": "application/json" });
+    if (renewed) h.append("Set-Cookie", renewed);
+    return new Response(body, { headers: h });
   }],
 
   ["GET", /^\/api\/public\/settings$/, async () => {
