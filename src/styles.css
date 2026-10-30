@@ -204,3 +204,96 @@ tr:last-child td{border-bottom:0}tbody tr{transition:background .15s}tbody tr:ho
   .nav nav.open{display:flex}.nav nav .btn{margin:4px 0 0}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.msg,.mini{opacity:1}.bars span{transform:none}.rv-pre{opacity:1;transform:none}html{scroll-behavior:auto}}
+
+/* =====================================================================
+   Polimento e celular
+   ===================================================================== */
+html{-webkit-text-size-adjust:100%;scrollbar-color:#3f3f46 transparent}
+body{overflow-x:hidden}
+.kpi b,td,.big,.mini-k b,.pager{font-variant-numeric:tabular-nums}
+.chart text{font-size:17px}
+.crumb{font-weight:600;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%}
+.row.between{flex-wrap:wrap}
+.pager{flex-wrap:wrap}.pager span{text-align:center}
+.btn:active{transform:scale(.98)}
+.card.clickable:active{transform:scale(.99)}
+
+/* carregando: esqueleto no lugar de "Carregando…" */
+.skels{display:grid;gap:12px;margin:18px 0}
+.skel{height:84px;border-radius:16px;background:linear-gradient(90deg,var(--surf) 25%,var(--surf2) 50%,var(--surf) 75%);background-size:200% 100%;animation:shimmer 1.3s linear infinite}
+.skels .skel:first-child{height:40px;width:42%}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* toque: alvos de 44px e sem zoom automático do iOS nos campos */
+@media (pointer:coarse){
+  .btn,.input{min-height:44px}.btn.sm{min-height:40px}
+  .dash aside a{min-height:44px;display:flex;align-items:center}
+  .faq summary{min-height:56px}.nav nav a:not(.btn){min-height:44px;display:flex;align-items:center}
+}
+@media (hover:none){.spot::before,.spot::after{display:none}.btn.solid:hover{box-shadow:none;transform:none}}
+
+/* ---------- tablet e celular ---------- */
+@media (max-width:900px){
+  input,select,textarea,.input{font-size:16px}
+
+  /* site público */
+  .nav{top:8px;padding:0 10px}
+  .nav .wrap{height:56px;padding:0 8px 0 16px;background:rgba(8,8,8,.97);backdrop-filter:none}
+  .nav nav{top:64px;gap:2px}
+  .nav nav a:not(.btn){padding:12px 14px;font-size:1.05rem}
+  .nav nav .btn{justify-content:center;min-height:46px}
+  .hero{padding:36px 0 48px}.hero::after,.mini,.dc{backdrop-filter:none}.hero::after{display:none}
+  .hero .wrap{gap:36px}
+  h1{font-size:clamp(2.1rem,9.2vw,3rem)}
+  .hero .lead{font-size:1.05rem;margin:18px 0 24px}
+  .actions .btn{flex:1 1 100%}
+  .dc-body{min-height:0}
+  .sec{padding:64px 0}.sec.tight{padding:40px 0}.sec-head{margin-bottom:30px}
+  .cell{padding:24px;border-radius:22px}.step{padding:24px;border-radius:22px}
+  .grow{padding:22px 0}
+  .pricebox{padding:30px 24px;border-radius:26px}.pricebox .side .btn{width:100%}
+  .cta{padding:84px 0}
+  .foot .cols{grid-template-columns:1fr 1fr}.foot .cols>div:first-child{grid-column:1/-1}
+  .loginbox{margin:36px auto;padding:30px 22px}
+  .pagehead{padding:56px 0 24px}
+
+  /* painel: menu vira faixa rolável no topo */
+  .dash{display:block}
+  .dash aside{position:sticky;top:0;z-index:40;height:auto;padding:10px 12px;border-right:0;border-bottom:1px solid var(--line);
+    background:rgba(0,0,0,.94);display:flex;align-items:center;gap:10px}
+  .dash aside .logo{font-size:0;gap:0;flex:none}.dash aside .logo span{font-size:1rem}
+  .dash aside nav{flex-direction:row;margin:0;gap:6px;flex:1;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);padding-right:24px}
+  .dash aside nav::-webkit-scrollbar{display:none}
+  .dash aside nav a{flex:none;white-space:nowrap;padding:8px 15px;border:1px solid var(--line);min-height:40px}
+  .dash aside nav a.on{border-color:#fff}
+  .dash aside hr{flex:none;width:1px;height:22px;margin:0 2px;border:0;border-left:1px solid var(--line2)}
+  .dash aside small{display:none}
+  .dtop{padding:10px 14px}.user span{display:none}
+  .dbody{padding:18px 14px calc(28px + env(safe-area-inset-bottom))}
+  .dbody h1{font-size:1.65rem}.dbody h2{font-size:1.15rem}
+  .grid2{grid-template-columns:1fr}.grid3{grid-template-columns:1fr}
+  .card{padding:18px;border-radius:18px}
+  .filters{flex-direction:column}.filters .input,.filters .btn{width:100%;flex:none}
+  .row.between>select,.row.between>.input{width:100%}
+  .empty{padding:56px 8px}
+
+  /* tabelas viram cartões */
+  .tablewrap{border:0;overflow:visible;border-radius:0;margin:12px 0}
+  table.rt,table.rt tbody,table.rt tr,table.rt td{display:block;width:100%}
+  table.rt thead{display:none}
+  table.rt tr{border:1px solid var(--line);border-radius:18px;padding:10px 16px;margin-bottom:12px;background:var(--surf)}
+  table.rt td{display:flex;justify-content:space-between;align-items:center;gap:16px;border:0;padding:8px 0;white-space:normal;text-align:right;word-break:break-word}
+  table.rt td+td{border-top:1px solid var(--line)}
+  table.rt td::before{content:attr(data-label);flex:none;color:var(--mut);font-size:.85rem;text-align:left}
+  table.rt td:empty{display:none}
+}
+
+@media (max-width:600px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .kpi{padding:14px}.kpi b{font-size:1.05rem;word-break:break-word}
+  .bento{gap:10px}.chip{font-size:.85rem;padding:4px 11px}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.tabs button{flex:none;white-space:nowrap}
+  .kv{grid-template-columns:1fr;gap:2px 0}.kv dd{margin-bottom:10px}
+  .whois{min-width:0}
+}
