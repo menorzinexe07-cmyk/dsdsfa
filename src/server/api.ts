@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
 
@@ -47,10 +47,12 @@ const purchaseSchema = z.object({
 });
 const saleSchema = z.object({
   event_id: id, bot_id: id, sale_id: id,
-  customer: z.object({ discord_user_id: snowflake.optional(), name: z.string().max(100).optional() }).default({}),
+  customer: z.object({ discord_user_id: snowflake.optional(), name: z.string().max(100).optional(),
+    icon: z.string().url().startsWith("https://").max(500).optional() }).default({}),
   product: z.object({ id: id.optional(), name: z.string().max(200).optional() }).default({}),
   amount_gross: money, fees: money, amount_net: money,
   currency: z.string().regex(/^[A-Z]{3}$/).default("BRL"),
+  payment_method: z.string().max(40).optional(), gateway: z.string().max(40).optional(),
   status: z.enum(["approved", "pending", "canceled", "refunded"]), sold_at: iso,
 });
 
@@ -89,3 +91,46 @@ export async function handleSaleStatus(req: Request, botId: string, saleId: stri
 }
 
 export const handleHealth = () => json({ ok: true, ts: new Date().toISOString() });
+
+// ---------- POST /venda/:botId/salles  (formato simples em português) ----------
+const vendaSchema = z.object({
+  id_venda: id.optional(),                       // recomendado: evita duplicar se reenviar
+  valor_liquido: z.number().nonnegative().max(1_000_000_000),
+  valor_bruto: money, taxas: money,
+  cliente: z.object({
+    id: snowflake,
+    nome: z.string().trim().min(1).max(100),
+    icone: z.string().url().startsWith("https://").max(500).optional(),
+  }),
+  produto: z.object({ id: id.optional(), nome: z.string().trim().min(1).max(200) }),
+  metodo_pagamento: z.string().max(40).optional(),
+  gateway: z.string().max(40).optional(),
+  status: z.enum(["approved", "pending", "canceled", "refunded"]).default("approved"),
+  vendido_em: iso.optional(),
+});
+
+export async function handleVenda(req: Request, botId: string) {
+  const a = await authenticate(req, botId);
+  if (a.err) return a.err;
+  const parsed = vendaSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return json({ error: "validation_error", details: parsed.error.flatten() }, 422);
+  const v = parsed.data;
+  const saleId = v.id_venda ?? `auto_${randomUUID()}`;
+  const p = {
+    event_id: `venda:${botId}:${saleId}`, bot_id: botId, sale_id: saleId,
+    customer: { discord_user_id: v.cliente.id, name: v.cliente.nome, icon: v.cliente.icone },
+    product: { id: v.produto.id, name: v.produto.nome },
+    amount_gross: v.valor_bruto ?? null, fees: v.taxas ?? null, amount_net: v.valor_liquido,
+    currency: "BRL", status: v.status, sold_at: v.vendido_em ?? new Date().toISOString(),
+    payment_method: v.metodo_pagamento, gateway: v.gateway,
+  };
+  const { data, error } = await db.rpc("ingest_sale", { p, p_cred: a.cred!.id });
+  if (error) {
+    const nf = error.message.includes("bot_not_found");
+    await db.from("api_events").insert({ event_id: `${p.event_id}:err:${Date.now()}`, credential_id: a.cred!.id,
+      type: "sale", bot_id: botId, outcome: "error", error: error.message.slice(0, 300) });
+    return json({ error: nf ? "bot_not_found" : "internal_error" }, nf ? 404 : 500);
+  }
+  const dup = String(data).startsWith("duplicate");
+  return json({ result: data, id_venda: saleId, duplicate: dup, idempotente: !!v.id_venda }, dup ? 200 : 201);
+}
