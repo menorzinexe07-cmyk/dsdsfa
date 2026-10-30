@@ -2,7 +2,7 @@ import { useState } from "react";
 import { INVITE } from "../content";
 import { Dash } from "../ui/Shell";
 import { api, brl, dt, useApi, ApiError } from "../ui/api";
-import { Async, Badge, BarChart, Empty, Kpi, LineChart, Pager } from "../ui/kit";
+import { Async, Avatar, Badge, BarChart, Empty, Kpi, LineChart, Pager } from "../ui/kit";
 
 const botHref = (id: string, tab = "visao-geral") => `/dashboard/bots/${encodeURIComponent(id)}/${tab}`;
 
@@ -13,12 +13,12 @@ function NoBots() {
 }
 
 function BotCard({ b }: { b: any }) {
-  return <div className="card bot">
+  return <a className="card bot clickable" href={botHref(b.bot_id)}>
     <div className="row">{b.avatar_url ? <img src={b.avatar_url} alt="" className="bav" /> : <span className="bav ph">{(b.name ?? "?")[0]}</span>}
-      <div><h3>{b.name}</h3><small>ID interno: {b.bot_id}</small></div></div>
+      <div><h3>{b.name}{b.bot_id === "bot_teste" && <span className="testtag">Teste</span>}</h3><small>ID interno: {b.bot_id}</small></div></div>
     <dl><dt>Adquirido em</dt><dd>{dt(b.acquired_at)}</dd><dt>Licença</dt><dd><Badge s={b.license_status} /></dd>
       <dt>Integração</dt><dd><Badge s={b.integration.status} /></dd></dl>
-    <a className="btn solid" href={botHref(b.bot_id)}>Gerenciar</a></div>;
+    <span className="btn solid">Gerenciar</span></a>;
 }
 
 export function DashboardHome() {
@@ -51,6 +51,13 @@ export function DashboardBots() {
 // ---------- Painel de um bot ----------
 const PERIODS: Record<string, number | null> = { "7": 7, "30": 30, "90": 90, all: null };
 
+function SeedTest({ onDone }: { onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  return <div className="state">Este é o seu Bot Teste (visível só para admins). Gere vendas de exemplo para ver o painel funcionando.{" "}
+    <button className="btn sm solid" disabled={busy} onClick={async () => { setBusy(true); try { await api("/api/admin/test-sales", { method: "POST" }); onDone(); } finally { setBusy(false); } }}>
+      {busy ? "Gerando…" : "Gerar vendas de exemplo"}</button></div>;
+}
+
 function Overview({ botId }: { botId: string }) {
   const [per, setPer] = useState("30");
   const from = PERIODS[per] ? new Date(Date.now() - PERIODS[per]! * 864e5).toISOString() : "";
@@ -60,16 +67,17 @@ function Overview({ botId }: { botId: string }) {
       <select className="input w auto" value={per} onChange={(e) => setPer(e.target.value)}>
         <option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="all">Todo o período</option></select></div>
     <p className="muted">Receita, ticket médio e clientes consideram apenas vendas aprovadas.</p>
-    <Async q={q}>{(s) => { const daily = s.daily.map((d: any) => ({ label: d.day.slice(5), gross: Number(d.gross ?? 0), sales: d.sales }));
+    <Async q={q}>{(s) => { const daily = s.daily.map((d: any) => ({ label: d.day.slice(5), gross: Number(d.revenue ?? 0), sales: d.sales }));
       let acc = 0; const evo = daily.map((d: any) => ({ label: d.label, value: (acc += d.gross) }));
       const sc = s.status_counts ?? {};
       return <>
+        {botId === "bot_teste" && s.all.sales === 0 && <SeedTest onDone={q.reload} />}
         <div className="kpis">
-          <Kpi label="Faturamento bruto" value={brl(s.gross)} /><Kpi label="Total líquido informado" value={brl(s.net)} hint="Soma dos valores líquidos enviados" />
+          <Kpi label="Faturamento" value={brl(s.revenue)} hint="Líquido enviado (ou bruto, se não houver líquido)" /><Kpi label="Bruto informado" value={brl(s.gross)} /><Kpi label="Total líquido informado" value={brl(s.net)} />
           <Kpi label="Vendas" value={s.sales} /><Kpi label="Ticket médio" value={brl(s.avg_ticket)} />
           <Kpi label="Clientes únicos" value={s.unique_customers} /><Kpi label="Última venda" value={dt(s.last_sale)} />
-          <Kpi label="Hoje" value={`${s.today.sales} · ${brl(s.today.gross)}`} /><Kpi label="Últimos 7 dias" value={`${s.last7.sales} · ${brl(s.last7.gross)}`} />
-          <Kpi label="Últimos 30 dias" value={`${s.last30.sales} · ${brl(s.last30.gross)}`} /><Kpi label="Todo o período" value={`${s.all.sales} · ${brl(s.all.gross)}`} /></div>
+          <Kpi label="Hoje" value={`${s.today.sales} · ${brl(s.today.revenue)}`} /><Kpi label="Últimos 7 dias" value={`${s.last7.sales} · ${brl(s.last7.revenue)}`} />
+          <Kpi label="Últimos 30 dias" value={`${s.last30.sales} · ${brl(s.last30.revenue)}`} /><Kpi label="Todo o período" value={`${s.all.sales} · ${brl(s.all.revenue)}`} /></div>
         <div className="grid2">
           <div className="card"><h3>Faturamento por dia</h3><BarChart data={daily.map((d: any) => ({ label: d.label, value: d.gross }))} fmt={brl} /></div>
           <div className="card"><h3>Vendas por dia</h3><BarChart data={daily.map((d: any) => ({ label: d.label, value: d.sales }))} /></div>
@@ -77,9 +85,9 @@ function Overview({ botId }: { botId: string }) {
           <div className="card"><h3>Status das vendas no período</h3>
             <ul className="plain"><li>Aprovadas: {sc.approved ?? 0}</li><li>Pendentes: {sc.pending ?? 0}</li><li>Canceladas: {sc.canceled ?? 0}</li><li>Reembolsadas: {sc.refunded ?? 0}</li></ul></div>
           <div className="card"><h3>Produtos mais vendidos</h3>{s.top_products.length ? <ul className="plain">{s.top_products.map((p: any) =>
-            <li key={p.name}>{p.name} — {p.sales} vendas · {brl(p.gross)}</li>)}</ul> : <Empty>Nenhum produto enviado pela integração.</Empty>}</div>
+            <li key={p.name}>{p.name} — {p.sales} vendas · {brl(p.revenue)}</li>)}</ul> : <Empty>Nenhum produto enviado pela integração.</Empty>}</div>
           <div className="card"><h3>Clientes que mais compraram</h3>{s.top_customers.length ? <ul className="plain">{s.top_customers.map((c: any) =>
-            <li key={c.discord_id}>{c.name ?? c.discord_id} — {c.purchases} compras · {brl(c.spent)}</li>)}</ul> : <Empty>Sem clientes identificados.</Empty>}</div>
+            <li key={c.discord_id} className="whois"><Avatar src={c.icon} name={c.name} /> {c.name ?? c.discord_id} — {c.purchases} compras · {brl(c.revenue)}</li>)}</ul> : <Empty>Sem clientes identificados.</Empty>}</div>
         </div></>; }}</Async></>;
 }
 
@@ -98,10 +106,10 @@ function Sales({ botId }: { botId: string }) {
       <input className="input" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value, page: 1 })} />
       <input className="input" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value, page: 1 })} /></div>
     <Async q={q}>{(d) => !d.items.length ? <Empty>Nenhuma venda encontrada.</Empty> : <>
-      <div className="tablewrap"><table><thead><tr>{th("sold_at", "Data e hora")}{th("customer_name", "Cliente")}<th>ID Discord</th><th>Produto</th>
+      <div className="tablewrap"><table><thead><tr>{th("sold_at", "Data e hora")}{th("customer_name", "Cliente")}<th>ID Discord</th><th>Produto</th><th>Pagamento</th>
         {th("amount_gross", "Bruto")}<th>Taxas</th>{th("amount_net", "Líquido")}{th("status", "Status")}<th>ID da venda</th></tr></thead>
-        <tbody>{d.items.map((s: any) => <tr key={s.sale_id}><td>{dt(s.sold_at)}</td><td>{s.customer_name ?? "—"}</td><td>{s.customer_discord_id ?? "—"}</td>
-          <td>{s.product_name ?? "—"}</td><td>{brl(s.amount_gross)}</td><td>{brl(s.fees)}</td><td>{brl(s.amount_net)}</td><td><Badge s={s.status} /></td><td><code>{s.sale_id}</code></td></tr>)}</tbody></table></div>
+        <tbody>{d.items.map((s: any) => <tr key={s.sale_id}><td>{dt(s.sold_at)}</td><td><span className="whois"><Avatar src={s.customer_icon} name={s.customer_name} size={24} /> {s.customer_name ?? "—"}</span></td><td>{s.customer_discord_id ?? "—"}</td>
+          <td>{s.product_name ?? "—"}</td><td>{[s.payment_method, s.gateway].filter(Boolean).join(" · ") || "—"}</td><td>{brl(s.amount_gross)}</td><td>{brl(s.fees)}</td><td>{brl(s.amount_net)}</td><td><Badge s={s.status} /></td><td><code>{s.sale_id}</code></td></tr>)}</tbody></table></div>
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={(page) => setF({ ...f, page })} /></>}</Async></>;
 }
 
@@ -112,21 +120,23 @@ function Clients({ botId }: { botId: string }) {
     <input className="input" placeholder="Pesquisar por nome ou ID Discord" value={q0} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
     <Async q={q}>{(d) => !d.items.length ? <Empty>Nenhum cliente encontrado.</Empty> : <>
       <div className="tablewrap"><table><thead><tr><th>Cliente</th><th>ID Discord</th><th>Primeira compra</th><th>Última compra</th><th>Compras</th><th>Total gasto</th><th>Produtos</th><th /></tr></thead>
-        <tbody>{d.items.map((c: any) => <tr key={c.k}><td>{c.name ?? "—"}</td><td>{c.did ?? "—"}</td><td>{dt(c.first_at)}</td><td>{dt(c.last_at)}</td>
+        <tbody>{d.items.map((c: any) => <tr key={c.k}><td><span className="whois"><Avatar src={c.icon} name={c.name} size={24} /> {c.name ?? "—"}</span></td><td>{c.did ?? "—"}</td><td>{dt(c.first_at)}</td><td>{dt(c.last_at)}</td>
           <td>{c.purchases}</td><td>{brl(c.spent)}</td><td>{c.products?.join(", ") || "—"}</td>
           <td>{c.did && <a href={`${botHref(botId, "vendas")}?q=${c.did}`}>Histórico</a>}</td></tr>)}</tbody></table></div>
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={setPage} /></>}</Async></>;
 }
 
 const SAMPLE_SALE = `{
-  "event_id": "evt_venda_001",
-  "bot_id": "SEU_BOT_ID",
-  "sale_id": "venda_001",
-  "customer": { "discord_user_id": "123456789012345678", "name": "Cliente" },
-  "product": { "id": "produto_001", "name": "Produto vendido" },
-  "amount_gross": 20.00, "fees": 1.00, "amount_net": 19.00,
-  "currency": "BRL", "status": "approved",
-  "sold_at": "2026-10-29T12:30:00Z"
+  "id_venda": "venda_001",
+  "valor_liquido": 19.00,
+  "valor_bruto": 20.00,
+  "taxas": 1.00,
+  "cliente": { "id": "123456789012345678", "nome": "Cliente", "icone": "https://cdn.discordapp.com/avatars/..." },
+  "produto": { "id": "produto_001", "nome": "Produto vendido" },
+  "metodo_pagamento": "pix",
+  "gateway": "mercadopago",
+  "status": "approved",
+  "vendido_em": "2026-10-29T12:30:00Z"
 }`;
 
 function Integration({ botId }: { botId: string }) {
@@ -155,9 +165,9 @@ function Integration({ botId }: { botId: string }) {
       {!d.credentials.length && <tr><td colSpan={6}>Nenhuma credencial exclusiva deste bot.</td></tr>}</tbody></table></div>
     <h2>Como configurar o Bot Manager</h2>
     <p>Envie eventos com o cabeçalho <code>Authorization: Bearer SEU_SEGREDO</code>. Cada <code>event_id</code> deve ser único; reenviar o mesmo evento é seguro.</p>
-    <ul className="plain"><li><code>POST {origin}/api/v1/apps/purchases</code> — registra compra/propriedade</li><li><code>POST {origin}/api/v1/apps/sales</code> — registra venda</li>
+    <ul className="plain"><li><code>POST {origin}/api/v1/apps/purchases</code> — registra compra/propriedade</li><li><code>POST {origin}/venda/{botId}/salles</code> — registra venda (formato simples abaixo)</li><li><code>POST {origin}/api/v1/apps/sales</code> — registra venda (formato completo)</li>
       <li><code>PATCH {origin}/api/v1/apps/sales/:saleId?bot_id=…</code> — atualiza status</li><li><code>GET {origin}/api/v1/apps/:botId/sales | stats | customers</code></li></ul>
-    <pre>{SAMPLE_SALE.replace("SEU_BOT_ID", botId)}</pre></>}</Async></>;
+    <pre>{SAMPLE_SALE}</pre><p className="muted">Obrigatórios: valor_liquido, cliente.id, cliente.nome e produto.nome. O restante é opcional. Reenviar o mesmo id_venda não duplica.</p></>}</Async></>;
 }
 
 function Settings({ botId }: { botId: string }) {
