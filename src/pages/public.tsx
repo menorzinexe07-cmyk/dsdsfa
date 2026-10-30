@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 /**
  * Painel de produto demonstrativo, imitando uma mensagem do bot no Discord.
@@ -10,14 +10,10 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 
 interface Plano { id: string; nome: string; desc: string; preco: number }
 
-const PLANOS: Plano[] = [
-  { id: "mensal", nome: "Plano Mensal", desc: "Acesso por 1 mês", preco: 20 },
-  { id: "trimestral", nome: "Plano Trimestral", desc: "Acesso por 3 meses", preco: 55 },
-  { id: "anual", nome: "Plano Anual", desc: "Acesso por 12 meses", preco: 190 },
-];
+const PRODUTO = "Cl0nar servidores";
+const PLANO: Plano = { id: "clone", nome: "Clone de servidor", desc: "Estrutura completa, pronta em poucos minutos", preco: 5 };
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const faixa = `${brl(Math.min(...PLANOS.map((p) => p.preco)))} - ${brl(Math.max(...PLANOS.map((p) => p.preco)))}`;
 const TEMPO_PIX = 10 * 60; // segundos
 
 type Etapa =
@@ -84,53 +80,6 @@ function QrExemplo({ seed }: { seed: number }) {
   );
 }
 
-// ───────────────────────── seletor estilo Discord ─────────────────────────
-
-function Seletor({ onEscolher, desabilitado }: { onEscolher: (p: Plano) => void; desabilitado?: boolean }) {
-  const [aberto, setAberto] = useState(false);
-  const [ativo, setAtivo] = useState(0);
-  const raiz = useRef<HTMLDivElement>(null);
-  const id = useId();
-
-  useEffect(() => {
-    if (!aberto) return;
-    const fora = (e: PointerEvent) => { if (!raiz.current?.contains(e.target as Node)) setAberto(false); };
-    document.addEventListener("pointerdown", fora);
-    return () => document.removeEventListener("pointerdown", fora);
-  }, [aberto]);
-
-  const escolher = (p: Plano) => { setAberto(false); onEscolher(p); };
-
-  const teclas = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setAberto(true); setAtivo((a) => Math.min(a + 1, PLANOS.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setAberto(true); setAtivo((a) => Math.max(a - 1, 0)); }
-    else if (e.key === "Escape") setAberto(false);
-    else if ((e.key === "Enter" || e.key === " ") && aberto) { e.preventDefault(); escolher(PLANOS[ativo]); }
-  };
-
-  return (
-    <div className="zs-sel" ref={raiz}>
-      <button type="button" className="zs-sel-btn" aria-haspopup="listbox" aria-expanded={aberto}
-        aria-controls={`${id}-lista`} aria-activedescendant={aberto ? `${id}-${ativo}` : undefined}
-        disabled={desabilitado} onClick={() => setAberto((a) => !a)} onKeyDown={teclas}>
-        <span>Selecione uma opção para comprar</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-      </button>
-      {aberto && (
-        <ul className="zs-sel-lista" role="listbox" id={`${id}-lista`} aria-label="Planos disponíveis">
-          {PLANOS.map((p, i) => (
-            <li key={p.id} id={`${id}-${i}`} role="option" aria-selected={i === ativo}
-              className={i === ativo ? "on" : undefined} onMouseEnter={() => setAtivo(i)} onClick={() => escolher(p)}>
-              <span><b>{p.nome}</b><small>{p.desc}</small></span>
-              <em>{brl(p.preco)}</em>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 // ───────────────────────── peças de mensagem ─────────────────────────
 
 function Mensagem({ children, efemera, onDispensar }: { children: ReactNode; efemera?: boolean; onDispensar?: () => void }) {
@@ -186,7 +135,6 @@ function Contagem({ expira, aoExpirar }: { expira: number; aoExpirar: () => void
 export function DemoLoja() {
   const [etapa, setEtapa] = useState<Etapa>({ t: "painel" });
   const [copiado, setCopiado] = useState<null | "ok" | "erro">(null);
-  const [chave, setChave] = useState(0); // zera o seletor ao reiniciar
 
   // "gerando" -> "pix" depois de um instante, como o bot faria
   useEffect(() => {
@@ -202,7 +150,7 @@ export function DemoLoja() {
     return () => clearTimeout(tm);
   }, [copiado]);
 
-  const reiniciar = () => { setEtapa({ t: "painel" }); setCopiado(null); setChave((k) => k + 1); };
+  const reiniciar = () => { setEtapa({ t: "painel" }); setCopiado(null); };
 
   const copiar = async (texto: string) => {
     try { await navigator.clipboard.writeText(texto); setCopiado("ok"); } catch { setCopiado("erro"); }
@@ -222,8 +170,8 @@ export function DemoLoja() {
             <h2>Veja como seu cliente compra</h2>
             <p>Este painel funciona como o do seu servidor. Teste do início ao fim, sem pagar nada.</p>
             <ol>
-              <li><b>Escolha um plano</b><span>Use o menu do painel para selecionar uma opção.</span></li>
-              <li><b>Clique em Comprar</b><span>O bot abre o carrinho e gera o pagamento por PIX.</span></li>
+              <li><b>Clique em Comprar</b><span>O bot abre o carrinho com o produto e o valor.</span></li>
+              <li><b>Gere o PIX</b><span>O bot cria o pagamento com QR Code e código copia e cola.</span></li>
               <li><b>Simule o pagamento</b><span>Veja a confirmação e a entrega acontecerem no chat.</span></li>
             </ol>
             <p className="zs-aviso">Demonstração: o QR Code e o código PIX são fictícios e não geram cobrança.</p>
@@ -236,18 +184,35 @@ export function DemoLoja() {
             </div>
 
             <div className="zs-chat">
-              {/* mensagem fixa do painel */}
+              {/* mensagem fixa do painel, igual ao bot no Discord */}
               <Mensagem>
-                <div className="zs-embed" style={{ ["--bar" as string]: "#fff" }}>
-                  <h4>Produto Exemplo</h4>
-                  <div className="zs-texto">
-                    <p><b>Escolha o seu plano</b></p>
-                    {PLANOS.map((p) => <p key={p.id} className="zs-li"><b>{p.nome}</b><span>{p.desc}</span></p>)}
-                    <p className="zs-suave">Selecione uma opção abaixo para abrir o carrinho.</p>
-                  </div>
+                <div className="zs-embed zs-produto" style={{ ["--bar" as string]: "#fff" }}>
+                  <p className="zs-eyebrow">Clonar</p>
+                  <h4 className="zs-titulo">{PRODUTO}</h4>
+                  <p className="zs-sub">Estrutura idêntica ao original, pronta em poucos minutos.</p>
+
+                  <blockquote className="zs-cit">
+                    Clone qualquer servidor e tenha uma organização <b>idêntica ao original</b>, sem precisar configurar tudo do zero. Praticidade, rapidez e uma estrutura pronta para usar.
+                  </blockquote>
+
+                  <p className="zs-incluso">O que está incluído:</p>
+                  <ul className="zs-lista">
+                    <li><span aria-hidden="true">📂</span><span><u>Estrutura completa</u> do servidor</span></li>
+                    <li><span aria-hidden="true">🔧</span><span><b>Canais &amp; Categorias</b>, <b>permissões</b>, <b>cargos</b> e <b>emojis &amp; stickers</b></span></li>
+                    <li><span aria-hidden="true">⚡</span><span>Clonagem <u>rápida</u> e sem complicação</span></li>
+                    <li><span aria-hidden="true">💎</span><span>Alta qualidade e agilidade na entrega</span></li>
+                  </ul>
+                  <p className="zs-carteira" aria-hidden="true">👛</p>
+
                   <hr />
-                  <p className="zs-preco">{faixa}</p>
-                  <Seletor key={chave} desabilitado={etapa.t === "gerando"} onEscolher={(plano) => { setCopiado(null); setEtapa({ t: "carrinho", plano }); }} />
+                  <div className="zs-rod">
+                    <p className="zs-preco">{brl(PLANO.preco)}</p>
+                    <button type="button" className="zs-comprar" disabled={etapa.t === "gerando"}
+                      onClick={() => { setCopiado(null); setEtapa({ t: "carrinho", plano: PLANO }); }}>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 10.2a1 1 0 0 0 1 .8h8.7a1 1 0 0 0 1-.76L20 8H6.2" /><circle cx="9.5" cy="19" r="1.4" /><circle cx="17" cy="19" r="1.4" /></svg>
+                      Comprar
+                    </button>
+                  </div>
                 </div>
               </Mensagem>
 
@@ -256,8 +221,8 @@ export function DemoLoja() {
                 {etapa.t === "carrinho" && (
                   <Mensagem efemera onDispensar={reiniciar}>
                     <Embed titulo="Carrinho aberto">
-                      <Campo nome="Produto" valor="Produto Exemplo" />
-                      <Campo nome="Plano" valor={etapa.plano.nome} />
+                      <Campo nome="Produto" valor={PRODUTO} />
+                      <Campo nome="Item" valor={etapa.plano.nome} />
                       <Campo nome="Valor" valor={brl(etapa.plano.preco)} />
                       <div className="zs-acoes">
                         <button type="button" className="zs-b verde" onClick={() => setEtapa({ t: "gerando", plano: etapa.plano })}>Comprar com PIX</button>
@@ -316,7 +281,7 @@ export function DemoLoja() {
                   <>
                     <Mensagem>
                       <Embed cor="#23a559" titulo="Pagamento aprovado">
-                        <p className="zs-texto">Pedido <b>#{etapa.pedido}</b> confirmado. {etapa.plano.nome}, {brl(etapa.plano.preco)}.</p>
+                        <p className="zs-texto">Pedido <b>#{etapa.pedido}</b> confirmado. {PRODUTO}, {brl(etapa.plano.preco)}.</p>
                       </Embed>
                     </Mensagem>
                     <Mensagem efemera onDispensar={reiniciar}>
@@ -353,12 +318,13 @@ const CSS = `
 .zs-copy li span{opacity:.7;line-height:1.5}
 .zs-copy .zs-aviso{margin-top:30px;font-size:.88rem;opacity:.65;max-width:44ch}
 
-.zs-janela{--bg:#313338;--bg2:#2b2d31;--bg3:#1e1f22;--tx:#dbdee1;--mut:#949ba4;--linha:#3f4147;
-  background:var(--bg);color:var(--tx);border:1px solid #3a3c43;border-radius:14px;overflow:hidden;
-  box-shadow:0 30px 80px -30px rgba(0,0,0,.7);font-family:'gg sans','Segoe UI',system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.4;text-align:left}
+.zs-janela{--bg:#0f0f11;--bg2:#0b0b0d;--bg3:#1a1b1e;--tx:#dbdee1;--mut:#9a9da6;--linha:#2a2b30;
+  background:var(--bg);color:var(--tx);border:1px solid #232428;border-radius:16px;overflow:hidden;
+  box-shadow:0 30px 80px -30px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.02) inset;
+  font-family:'gg sans','Segoe UI',system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.4;text-align:left}
 .zs-janela *{box-sizing:border-box}
 .zs-janela h4,.zs-janela p{margin:0}
-.zs-janela-topo{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--bg3);box-shadow:0 1px 0 rgba(0,0,0,.2)}
+.zs-janela-topo{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--bg);border-bottom:1px solid #1c1d20}
 .zs-janela-topo svg{width:20px;height:20px;stroke:var(--mut);fill:none;stroke-width:2;stroke-linecap:round}
 .zs-janela-topo b{font-weight:600;color:#f2f3f5}
 .zs-janela-topo i{margin-left:auto;font-style:normal;font-size:12px;color:var(--mut)}
@@ -372,37 +338,41 @@ const CSS = `
 .zs-msg-topo time{font-size:12px;color:var(--mut);margin-left:4px}
 .zs-tag{background:#5865f2;color:#fff;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;line-height:1.4}
 
-.zs-embed{position:relative;background:var(--bg2);border:1px solid #26282c;border-left:4px solid var(--bar,#fff);border-radius:6px;padding:12px 14px 14px;max-width:480px;display:grid;gap:10px}
+.zs-embed{position:relative;background:var(--bg2);border:1px solid var(--linha);border-left:5px solid var(--bar,#fff);border-radius:8px;padding:14px 16px 16px;max-width:520px;display:grid;gap:10px}
 .zs-embed h4{font-size:15px;font-weight:700;color:#fff}
-.zs-embed hr{border:0;border-top:1px solid var(--linha);margin:2px 0}
+.zs-embed hr{border:0;border-top:1px solid var(--linha);margin:4px 0 2px}
 .zs-texto{display:grid;gap:6px;font-size:14px}
-.zs-li{display:flex;flex-direction:column}
-.zs-li b{color:#fff}
-.zs-li span{color:var(--mut);font-size:13px}
-.zs-suave{color:var(--mut);font-size:13px;margin-top:4px}
-.zs-preco{font-weight:700;color:#fff}
 
-.zs-sel{position:relative}
-.zs-sel-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg3);color:var(--mut);border:1px solid var(--linha);border-radius:6px;padding:11px 12px;font:inherit;cursor:pointer;text-align:left}
-.zs-sel-btn:hover:not(:disabled){border-color:#5b5e66;color:var(--tx)}
-.zs-sel-btn:disabled{opacity:.55;cursor:default}
-.zs-sel-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
-.zs-sel-btn[aria-expanded=true] svg{transform:rotate(180deg)}
-.zs-sel-lista{position:absolute;z-index:5;left:0;right:0;bottom:calc(100% + 6px);margin:0;padding:6px;list-style:none;background:var(--bg3);border:1px solid var(--linha);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.5)}
-.zs-sel-lista li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 10px;border-radius:5px;cursor:pointer}
-.zs-sel-lista li.on{background:#35373c}
-.zs-sel-lista b{display:block;color:#fff;font-weight:600}
-.zs-sel-lista small{display:block;color:var(--mut);font-size:12px}
-.zs-sel-lista em{font-style:normal;font-weight:700;color:#fff;white-space:nowrap}
+/* painel do produto (igual à foto) */
+.zs-produto{gap:8px}
+.zs-eyebrow{font-size:13px;font-weight:700;color:#e6e7ea}
+.zs-titulo{font-size:19px!important;font-weight:700;letter-spacing:-.01em}
+.zs-sub{font-size:13px;font-style:italic;color:var(--mut)}
+.zs-cit{margin:6px 0 4px;padding:12px 14px 12px 14px;border-left:4px solid #3a3b40;background:rgba(255,255,255,.015);border-radius:0 6px 6px 0;font-size:13px;line-height:1.55;color:#c4c7ce}
+.zs-cit b{color:#fff}
+.zs-incluso{font-size:12.5px;font-weight:700;color:#e6e7ea;margin-top:4px}
+.zs-lista{list-style:none;margin:0;padding:0;display:grid;gap:7px;font-size:13px;color:#c4c7ce}
+.zs-lista li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:6px;align-items:center}
+.zs-lista li>span:first-child{font-size:16px;line-height:1;text-align:center}
+.zs-lista b{color:#fff}
+.zs-lista u{text-decoration-color:rgba(255,255,255,.35);text-underline-offset:2px}
+.zs-carteira{font-size:15px;line-height:1;margin-top:2px}
+.zs-rod{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:6px}
+.zs-preco{font-weight:700;color:#fff;font-size:15px}
+.zs-comprar{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:14px;font-weight:600;color:#fff;background:#16171a;border:1px solid #34353b;border-radius:10px;padding:9px 18px;cursor:pointer;transition:background .15s,border-color .15s,transform .1s}
+.zs-comprar svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.zs-comprar:hover:not(:disabled){background:#202125;border-color:#4a4b52}
+.zs-comprar:active:not(:disabled){transform:scale(.97)}
+.zs-comprar:disabled{opacity:.55;cursor:default}
 
 .zs-campo{display:flex;justify-content:space-between;gap:16px;font-size:14px}
 .zs-campo span{color:var(--mut)}
 .zs-campo b{color:#fff;font-variant-numeric:tabular-nums}
 .zs-acoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-.zs-b{font:inherit;font-size:14px;font-weight:600;color:#fff;border:0;border-radius:4px;padding:8px 16px;cursor:pointer;transition:filter .12s}
+.zs-b{font:inherit;font-size:14px;font-weight:600;color:#fff;border:0;border-radius:6px;padding:8px 16px;cursor:pointer;transition:filter .12s}
 .zs-b:hover{filter:brightness(1.12)}
-.zs-b.verde{background:#248046}.zs-b.cinza{background:#4e5058}.zs-b.azul{background:#5865f2}
-.zs-sel-btn:focus-visible,.zs-b:focus-visible,.zs-efemera button:focus-visible,.zs-copia input:focus-visible{outline:2px solid #00a8fc;outline-offset:2px}
+.zs-b.verde{background:#248046}.zs-b.cinza{background:#3b3c42}.zs-b.azul{background:#5865f2}
+.zs-comprar:focus-visible,.zs-b:focus-visible,.zs-efemera button:focus-visible,.zs-copia input:focus-visible{outline:2px solid #00a8fc;outline-offset:2px}
 
 .zs-efemera{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:6px;font-size:12px;color:var(--mut)}
 .zs-efemera svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
@@ -410,10 +380,10 @@ const CSS = `
 .zs-efemera button:hover{text-decoration:underline}
 
 .zs-pix{display:grid;grid-template-columns:132px minmax(0,1fr);gap:16px;align-items:center}
-.zs-qr{width:132px;height:132px;border-radius:6px;display:block}
+.zs-qr{width:132px;height:132px;border-radius:8px;display:block}
 .zs-pix-info{display:grid;gap:8px}
 .zs-copia{display:grid;gap:5px;font-size:12px;color:var(--mut)}
-.zs-copia input{width:100%;background:var(--bg3);color:var(--tx);border:1px solid var(--linha);border-radius:5px;padding:8px 10px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.zs-copia input{width:100%;background:var(--bg3);color:var(--tx);border:1px solid var(--linha);border-radius:6px;padding:8px 10px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
 .zs-rodape{font-size:12px;color:var(--mut)}
 
 .zs-gerando{display:flex;align-items:center;gap:6px;font-size:14px}
@@ -421,7 +391,7 @@ const CSS = `
 .zs-pts i{width:6px;height:6px;border-radius:50%;background:var(--mut);animation:zs-pt 1s infinite ease-in-out}
 .zs-pts i:nth-child(2){animation-delay:.15s}.zs-pts i:nth-child(3){animation-delay:.3s}
 @keyframes zs-pt{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
-@media (prefers-reduced-motion:reduce){.zs-pts i{animation:none;opacity:.7}.zs-sel-btn svg{transition:none}}
+@media (prefers-reduced-motion:reduce){.zs-pts i{animation:none;opacity:.7}.zs-comprar{transition:none}}
 
 @media (max-width:900px){.zs-grid{grid-template-columns:1fr}}
 @media (max-width:480px){.zs-msg{grid-template-columns:32px minmax(0,1fr);gap:10px}.zs-av{width:32px;height:32px}
