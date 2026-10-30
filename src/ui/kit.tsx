@@ -54,3 +54,9 @@ export function LineChart({ data, fmt = String }: { data: { label: string; value
     <title>Total acumulado: {fmt(data[data.length - 1].value)}</title>
   </svg>;
 }
+
+export function Avatar({ src, name, size = 28 }: { src?: string | null; name?: string | null; size?: number }) {
+  const st = { width: size, height: size };
+  return src ? <img className="cav" style={st} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" />
+    : <span className="cav ph" style={st}>{(name ?? "?")[0]?.toUpperCase()}</span>;
+}
