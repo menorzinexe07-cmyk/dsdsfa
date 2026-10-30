@@ -96,3 +96,17 @@ export async function isAdmin(req: Request) {
   const { data } = await db.from("platform_admins").select("discord_id").eq("discord_id", uid).maybeSingle();
   return !!data;
 }
+
+export const TEST_BOT_ID = "bot_teste";
+
+export async function isAdminUid(uid: string) {
+  const { data } = await db.from("platform_admins").select("discord_id").eq("discord_id", uid).maybeSingle();
+  return !!data;
+}
+
+/** Admins sempre têm o "Bot Teste" vinculado, para abrir o dashboard mesmo sem compras reais. */
+export async function ensureTestBot(uid: string) {
+  if (!(await isAdminUid(uid))) return;
+  await db.from("apps").upsert({ bot_id: TEST_BOT_ID, name: "Bot Teste" }, { onConflict: "bot_id", ignoreDuplicates: true });
+  await db.from("app_owners").upsert({ bot_id: TEST_BOT_ID, discord_user_id: uid, active: true }, { onConflict: "bot_id,discord_user_id" });
+}
