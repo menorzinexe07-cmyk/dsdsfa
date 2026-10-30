@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
-import { ApiError, errMsg } from "./api";
+import { ApiError, cacheClear, errMsg } from "./api";
 
 type Q<T> = { data?: T; error?: ApiError; loading: boolean; reload: () => void };
 
 /** Estados de carregamento / erro / sessão expirada em um só lugar. */
 export function Async<T>({ q, children }: { q: Q<T>; children: (d: T) => ReactNode }) {
-  if (q.loading && !q.data) return <div className="state"><span className="spin" /> Carregando…</div>;
+  if (q.loading && !q.data) return <div className="skels" aria-busy="true" aria-label="Carregando"><div className="skel" /><div className="skel" /><div className="skel" /></div>;
   if (q.error) {
-    if (q.error.status === 401 && typeof window !== "undefined") window.location.href = "/login?expirada=1";
+    if (q.error.status === 401 && typeof window !== "undefined") { cacheClear(); window.location.href = "/login?expirada=1"; }
     return <div className="state err">{errMsg(q.error)} <button className="btn sm" onClick={q.reload}>Tentar de novo</button></div>;
   }
   return q.data ? <>{children(q.data)}</> : null;
@@ -40,7 +40,7 @@ export function BarChart({ data, fmt = String }: { data: { label: string; value:
   return <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart" role="img">
     {data.map((d, i) => { const h = (d.value / max) * H;
       return <g key={i}><rect x={i * bw + 2} y={H - h} width={Math.max(bw - 4, 1)} height={h} rx="2"><title>{d.label}: {fmt(d.value)}</title></rect>
-        {(data.length <= 12 || i % Math.ceil(data.length / 8) === 0) && <text x={i * bw + bw / 2} y={H + 16} textAnchor="middle">{d.label}</text>}</g>; })}
+        {i % Math.ceil(data.length / 6) === 0 && <text x={i * bw + bw / 2} y={H + 18} textAnchor="middle">{d.label}</text>}</g>; })}
   </svg>;
 }
 export function LineChart({ data, fmt = String }: { data: { label: string; value: number }[]; fmt?: (n: number) => string }) {
@@ -49,8 +49,8 @@ export function LineChart({ data, fmt = String }: { data: { label: string; value
   const pts = data.map((d, i) => `${(i / (data.length - 1)) * W},${H - (d.value / max) * H}`).join(" ");
   return <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart line" role="img">
     <polyline points={pts} fill="none" strokeWidth="2.5" />
-    {data.map((d, i) => (data.length <= 12 || i % Math.ceil(data.length / 8) === 0) &&
-      <text key={i} x={(i / (data.length - 1)) * W} y={H + 16} textAnchor="middle">{d.label}</text>)}
+    {data.map((d, i) => i % Math.ceil(data.length / 6) === 0 &&
+      <text key={i} x={(i / (data.length - 1)) * W} y={H + 18} textAnchor={i === 0 ? "start" : "middle"}>{d.label}</text>)}
     <title>Total acumulado: {fmt(data[data.length - 1].value)}</title>
   </svg>;
 }
