@@ -27,13 +27,14 @@ export async function createCredential(name: string, botIds: string[]) {
 export async function authenticate(req: Request, botId?: string) {
   const m = /^Bearer (zy_[A-Za-z0-9_-]{20,})$/.exec(req.headers.get("authorization") ?? "");
   if (!m) return { err: json({ error: "unauthorized" }, 401) };
-  const { data: cred } = await db.from("api_credentials").select("id,bot_ids")
+  const { data: cred } = await db.from("api_credentials").select("id,bot_ids,last_used_at")
     .eq("key_hash", sha256(m[1])).is("revoked_at", null).maybeSingle();
   if (!cred) return { err: json({ error: "unauthorized" }, 401) };
   if (limited(cred.id)) return { err: json({ error: "rate_limited" }, 429) };
   if (botId && !cred.bot_ids.includes("*") && !cred.bot_ids.includes(botId))
     return { err: json({ error: "forbidden" }, 403) };
-  await db.from("api_credentials").update({ last_used_at: new Date().toISOString() }).eq("id", cred.id);
+  if (!cred.last_used_at || Date.now() - Date.parse(cred.last_used_at) > 60_000) // no máx. 1 gravação por minuto
+    await db.from("api_credentials").update({ last_used_at: new Date().toISOString() }).eq("id", cred.id);
   return { cred };
 }
 
