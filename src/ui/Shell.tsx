@@ -69,7 +69,7 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
         {me.data?.is_admin && <><hr />{item("/admin", "Administração")}</>}
       </nav></aside>
     <section>
-      <div className="dtop"><span />
+      <div className="dtop"><span className="crumb">{bot?.name ?? ""}</span>
         {me.data && <div className="user"><img src={avatarUrl(me.data.discord_id, me.data.avatar)} alt="" />
           <span>{me.data.global_name ?? me.data.username}</span><button className="btn sm" onClick={out}>Sair</button></div>}</div>
       <div className="dbody"><Async q={me}>{() => children}</Async></div>
