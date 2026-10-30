@@ -60,6 +60,13 @@ function SettingsTab() {
       {msg && <p>{msg}</p>}</div>; }}</Async>;
 }
 
+function SeedButton() {
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
+  return <><button className="btn" disabled={busy} onClick={async () => { setBusy(true); setMsg("");
+    try { const r = await api("/api/admin/test-sales", { method: "POST" }); setMsg(`${r.created} vendas criadas`); } catch { setMsg("Falhou"); } finally { setBusy(false); } }}>
+    {busy ? "Gerando…" : "Gerar vendas no Bot Teste"}</button>{msg && <small className="muted">{msg}</small>}</>;
+}
+
 function NotAdmin() {
   const me = useApi<any>("/api/me");
   const id = me.data?.discord_id ?? "SEU_ID_DISCORD";
@@ -76,7 +83,7 @@ export function Admin() {
   const ov = useApi<any>("/api/admin/overview"), st = useApi<any>("/api/admin/status");
   return <Dash>
     {ov.error?.status === 404 ? <NotAdmin /> : <>
-    <div className="row between"><h1>Administração</h1><a className="btn solid" href="/dashboard/bots/bot_teste/visao-geral">Abrir Bot Teste</a></div>
+    <div className="row between"><h1>Administração</h1><div className="row"><SeedButton /><a className="btn solid" href="/dashboard/bots/bot_teste/visao-geral">Abrir Bot Teste</a></div></div>
     <Async q={ov}>{(o) => <div className="kpis"><Kpi label="Usuários" value={o.users} /><Kpi label="Bots" value={o.bots} /><Kpi label="Compras" value={o.purchases} />
       <Kpi label="Vendas processadas" value={o.sales} /><Kpi label="Credenciais ativas" value={o.active_credentials} /><Kpi label="Erros da API (24h)" value={o.errors_24h} /></div>}</Async>
     {st.data && <p className="muted">Banco de dados: <Badge s={st.data.database === "ok" ? "ativa" : "suspended"} /> ({st.data.database_ms} ms) · Último evento da API: {dt(st.data.last_api_event_at)}</p>}
