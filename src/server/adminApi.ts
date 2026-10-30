@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "./db";
-import { isAdmin, getSessionUser } from "./auth";
+import { isAdmin, getSessionUser, TEST_BOT_ID, ensureTestBot } from "./auth";
 import { createCredential, json } from "./api";
 import { audit, sameOrigin, type Route } from "./dashboardApi";
 import { paging } from "./queries";
@@ -85,5 +85,29 @@ export const adminRoutes: Route[] = [
     await db.from("platform_settings").upsert({ key: m[1], value: p.data });
     await audit(uid, "admin.settings.update", m[1]);
     return json({ ok: true });
+  })],
+
+  // Vendas de exemplo SOMENTE no bot_teste (nunca em bots reais). Idempotente: rodar de novo não duplica.
+  ["POST", /^\/api\/admin\/test-sales$/, guarded(async (_req, _m, uid) => {
+    await ensureTestBot(uid);
+    const clientes = [["Marina", "310000000000000001"], ["Lucas", "310000000000000002"], ["Ana", "310000000000000003"],
+      ["Pedro", "310000000000000004"], ["Julia", "310000000000000005"], ["Rafa", "310000000000000006"]];
+    const produtos = [["p1", "Produto Teste Básico", 9.9], ["p2", "Produto Teste Pro", 24.9], ["p3", "Produto Teste Premium", 59.9]];
+    const gateways = [["pix", "mercadopago"], ["pix", "efi"], ["saldo", "interno"]];
+    let created = 0;
+    for (let i = 0; i < 32; i++) {
+      const c = clientes[i % clientes.length], pr = produtos[(i * 7) % produtos.length], g = gateways[i % gateways.length];
+      const bruto = Number(pr[2]), taxas = Math.round(bruto * 0.0099 * 100) / 100;
+      const status = i === 5 ? "pending" : i === 11 ? "refunded" : i === 17 ? "canceled" : "approved";
+      const sold = new Date(Date.now() - (i % 14) * 864e5 - (i * 37 % 20) * 36e5).toISOString();
+      const { data } = await db.rpc("ingest_sale", { p_cred: null, p: {
+        event_id: `seed:${TEST_BOT_ID}:${i}`, bot_id: TEST_BOT_ID, sale_id: `teste_${i}`,
+        customer: { discord_user_id: c[1], name: c[0], icon: `https://cdn.discordapp.com/embed/avatars/${i % 5}.png` },
+        product: { id: pr[0], name: pr[1] }, amount_gross: bruto, fees: taxas, amount_net: Math.round((bruto - taxas) * 100) / 100,
+        currency: "BRL", status, sold_at: sold, payment_method: g[0], gateway: g[1] } });
+      if (data === "created") created++;
+    }
+    await audit(uid, "admin.test-sales.seed", TEST_BOT_ID, { created });
+    return json({ created });
   })],
 ];
