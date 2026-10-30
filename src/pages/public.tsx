@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as RPE, KeyboardEvent as RKE } from "react";
 import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
 import { Public } from "../ui/Shell";
 import { cacheClear, useApi } from "../ui/api";
@@ -11,10 +12,18 @@ const useSettings = () => {
 
 /* ---------- prévias demonstrativas: dados fictícios, sempre marcados como exemplo ---------- */
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+type Sale = { id: number; n: string; v: number; c: string; m: string; age: number };
 const SALES = [
-  { n: "Produto Exemplo", v: 20 }, { n: "Plano Mensal", v: 38.5 }, { n: "Produto Pro", v: 59.9 },
-  { n: "Produto Exemplo", v: 20 }, { n: "Plano Mensal", v: 38.5 }, { n: "Produto Pro", v: 59.9 },
+  { n: "Produto Exemplo", v: 20, c: "Marina", m: "Pix" },
+  { n: "Plano Mensal", v: 38.5, c: "Lucas", m: "Pix" },
+  { n: "Produto Pro", v: 59.9, c: "Ana", m: "Cartão" },
+  { n: "Produto Exemplo", v: 20, c: "Rafael", m: "Pix" },
+  { n: "Plano Mensal", v: 38.5, c: "Beatriz", m: "Boleto" },
+  { n: "Produto Pro", v: 59.9, c: "Caio", m: "Pix" },
 ];
+const ago = (a: number) => (a <= 0 ? "agora" : `há ${a} min`);
+const mk = (k: number, age: number): Sale => ({ id: k, ...SALES[Math.abs(k) % SALES.length], age });
 
 function useCountUp(target: number, ms = 800) {
   const [val, setVal] = useState(target);
@@ -35,63 +44,191 @@ function useCountUp(target: number, ms = 800) {
   return val;
 }
 
-function Phone() {
-  const [id, setId] = useState(1);           // contador de "vendas" simuladas
-  const [total, setTotal] = useState(1180);  // faturamento fictício
-  const [list, setList] = useState([{ id: 0, ...SALES[0], t: "agora" }]);
+/* notificação estilo iOS: toque expande, arrastar para a esquerda limpa */
+function Notif({ s, open, onToggle, onClear, onOpenApp }: {
+  s: Sale; open: boolean; onToggle: (id: number) => void; onClear: (id: number) => void; onOpenApp: () => void;
+}) {
+  const [dx, setDx] = useState(0);
+  const [drag, setDrag] = useState(false);
+  const [out, setOut] = useState(false);
+  const [col, setCol] = useState(false);
+  const st = useRef({ x: 0, moved: false });
 
-  // primeira venda entra logo; depois, uma nova a cada 4s
+  const dismiss = () => {
+    if (out) return;
+    setDx(-420); setOut(true);
+    setTimeout(() => setCol(true), 180);
+    setTimeout(() => onClear(s.id), 480);
+  };
+  const down = (e: RPE<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    st.current = { x: e.clientX, moved: false };
+    setDrag(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const move = (e: RPE<HTMLDivElement>) => {
+    if (!drag) return;
+    const d = e.clientX - st.current.x;
+    if (Math.abs(d) > 6) st.current.moved = true;
+    setDx(d < 0 ? d : d * 0.25);
+  };
+  const up = () => {
+    if (!drag) return;
+    setDrag(false);
+    if (dx < -90) dismiss();
+    else { setDx(0); if (!st.current.moved) onToggle(s.id); }
+  };
+  const cancel = () => { setDrag(false); setDx(0); };
+  const key = (e: RKE<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(s.id); }
+    else if (e.key === "Delete" || e.key === "Backspace") dismiss();
+  };
+
+  return <div className={`nwrap${col ? " col" : ""}`}><div className="nin">
+    <div className={`ncard${open ? " open" : ""}${drag ? " drag" : ""}${out ? " out" : ""}`}
+      role="button" tabIndex={0} aria-expanded={open}
+      aria-label={`Venda aprovada, ${s.n}, ${brl(s.v)}. Enter abre os detalhes, Delete limpa.`}
+      style={{ transform: `translateX(${dx}px)` }}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onKeyDown={key}>
+      <div className="nhead"><span className="nico">Z</span>
+        <div className="ntxt"><div className="ntop"><b>Venda aprovada</b><small>{ago(s.age)}</small></div>
+          <p>{s.n} · {brl(s.v)}</p></div></div>
+      <div className="nmore"><div>
+        <dl className="ndl"><dt>Cliente</dt><dd>{s.c}</dd><dt>Pagamento</dt><dd>{s.m}</dd><dt>Pedido</dt><dd>#{1040 + s.id}</dd></dl>
+        <div className="nbtns">
+          <button type="button" className="nbtn p" tabIndex={open ? 0 : -1} onClick={onOpenApp}>Ver no painel</button>
+          <button type="button" className="nbtn" tabIndex={open ? 0 : -1} onClick={dismiss}>Limpar</button>
+        </div>
+      </div></div>
+    </div></div></div>;
+}
+
+function Phone() {
+  const [view, setView] = useState<"lock" | "app">("lock");
+  const [total, setTotal] = useState(1180);
+  const [notifs, setNotifs] = useState<Sale[]>(() => [mk(-1, 3), mk(-2, 8)]);
+  const [log, setLog] = useState<Sale[]>(() => [mk(-1, 3), mk(-2, 8)]);
+  const [tick, setTick] = useState(0);
+  const [open, setOpen] = useState<number | null>(null);
+  const [torch, setTorch] = useState(false);
+  const [shot, setShot] = useState(0);
+  const [clock, setClock] = useState({ t: "9:41", d: "" });
+  const hold = useRef(false);
+  hold.current = open !== null; // enquanto uma notificação está aberta, não chega venda nova
+
   useEffect(() => {
-    const push = (k: number) => {
-      const s = SALES[k % SALES.length];
-      setId(k + 1);
-      setTotal((t) => t + s.v);
-      setList((l) => [{ id: k + 1, ...s, t: "agora" }, ...l.map((x) => ({ ...x, t: x.t === "agora" ? "há 1 min" : x.t }))].slice(0, 3));
+    const f = () => {
+      const n = new Date();
+      setClock({
+        t: n.toLocaleTimeString("pt-BR", { hour: "numeric", minute: "2-digit", hour12: false }),
+        d: n.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }),
+      });
     };
+    f();
+    const iv = setInterval(f, 20000);
+    return () => clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
     let k = 0;
-    const first = setTimeout(() => push(k++), 900);
-    const iv = setInterval(() => push(k++), 4000);
+    const push = () => {
+      if (hold.current) return;
+      const s = mk(++k, 0);
+      const age = (l: Sale[]) => l.map((x) => ({ ...x, age: x.age + 1 }));
+      setTick((t) => t + 1);
+      setTotal((t) => t + s.v);
+      setNotifs((l) => [s, ...age(l)].slice(0, 6));
+      setLog((l) => [s, ...age(l)].slice(0, 4));
+    };
+    const first = setTimeout(push, 1200);
+    const iv = setInterval(push, 4500);
     return () => { clearTimeout(first); clearInterval(iv); };
   }, []);
 
-  const sale = list[0];
+  const toggle = (id: number) => setOpen((o) => (o === id ? null : id));
+  const clear = (id: number) => { setNotifs((l) => l.filter((x) => x.id !== id)); setOpen((o) => (o === id ? null : o)); };
+  const clearAll = () => { setNotifs([]); setOpen(null); };
+  const openApp = () => { setView("app"); setOpen(null); };
+  const flip = () => { setView((v) => (v === "lock" ? "app" : "lock")); setOpen(null); };
+
+  const last = log[0];
   const shown = useCountUp(total);
+  const bars = [34, 48, 40, 62, 52, 76, 58];
+  const lock = view === "lock";
 
-  return <div className="phone" role="img" aria-label="Exemplo demonstrativo do painel no celular">
-    <i className="pbtn pbtn-l" /><i className="pbtn pbtn-r" />
-    <div className="phone-screen">
-      <div className="phone-notch" key={`n${id}`} />
-      <div className="ph-status">
-        <span className="ph-time">9:41</span>
-        <span className="ph-icons">
-          <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1" /><rect x="4.5" y="5" width="3" height="6" rx="1" /><rect x="9" y="2.5" width="3" height="8.5" rx="1" /><rect x="13.5" y="0" width="3" height="11" rx="1" /></svg>
-          <svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M1.5 4a9.5 9.5 0 0 1 13 0" /><path d="M4 6.7a6 6 0 0 1 8 0" /><circle cx="8" cy="9.3" r="1" fill="currentColor" stroke="none" /></svg>
-          <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x=".5" y=".5" width="22" height="11" rx="3.5" stroke="currentColor" opacity=".45" /><rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor" /><path d="M24 4v4c.8-.3 1.5-1.1 1.5-2S24.8 4.3 24 4Z" fill="currentColor" opacity=".5" /></svg>
-        </span>
-      </div>
+  return <div className="phone-wrap">
+    <div className={`phone${torch ? " torch" : ""}`} role="group" aria-label="Exemplo demonstrativo interativo de notificações no iPhone">
+      <i className="pbtn pbtn-a" /><i className="pbtn pbtn-u" /><i className="pbtn pbtn-d" /><i className="pbtn pbtn-r" />
+      <div className="phone-screen">
 
-      <div className="ph-toast" key={`t${id}`}>
-        <span className="av">Z</span>
-        <div><div className="ph-toast-top"><b>ZyraSallers</b><small>agora</small></div>
-          <p>Venda aprovada de {brl(sale.v)}</p></div>
-      </div>
-
-      <div className="ph-body">
-        <div className="ph-wallet">
-          <small>Faturamento do mês</small>
-          <b>{brl(shown)}</b>
-          <i key={`w${id}`}>+ {brl(sale.v)} agora</i>
+        <div className="phone-notch" key={`n${tick}`}>
+          <span className="isl-in"><b className="isl-ico">Z</b><em>{brl(last.v)}</em></span>
         </div>
-        <h4>Últimas vendas</h4>
-        <ul className="ph-list">{list.map((x) => <li key={x.id}>
-          <span className="ph-dot">{x.n[0]}</span>
-          <span><b>{x.n}</b><small>{x.t}</small></span><em>+ {brl(x.v)}</em></li>)}</ul>
-      </div>
 
-      <div className="ph-tag">Exemplo demonstrativo</div>
-      <div className="ph-home" />
-      <div className="ph-glare" />
+        <div className="ph-status" aria-hidden="true">
+          <span>{lock ? "" : clock.t}</span>
+          <span className="ph-icons">
+            <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1" /><rect x="4.5" y="5" width="3" height="6" rx="1" /><rect x="9" y="2.5" width="3" height="8.5" rx="1" /><rect x="13.5" y="0" width="3" height="11" rx="1" /></svg>
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M1.5 4a9.5 9.5 0 0 1 13 0" /><path d="M4 6.7a6 6 0 0 1 8 0" /><circle cx="8" cy="9.3" r="1" fill="currentColor" stroke="none" /></svg>
+            <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x=".5" y=".5" width="22" height="11" rx="3.5" stroke="currentColor" opacity=".45" /><rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor" /><path d="M24 4v4c.8-.3 1.5-1.1 1.5-2S24.8 4.3 24 4Z" fill="currentColor" opacity=".5" /></svg>
+          </span>
+        </div>
+
+        {/* ---------- tela de bloqueio ---------- */}
+        <div className={`ph-lock${lock ? "" : " off"}`} aria-hidden={!lock}>
+          <div className="ph-date">{clock.d}</div>
+          <div className="ph-clock">{clock.t}</div>
+
+          <div className="ph-notifs">
+            <div className="nbar"><span>Central de notificações</span>
+              {notifs.length > 1 && <button type="button" className="nclr" aria-label="Limpar todas as notificações" onClick={clearAll}>×</button>}</div>
+            <div className="nlist">
+              {notifs.map((s) => <Notif key={s.id} s={s} open={open === s.id} onToggle={toggle} onClear={clear} onOpenApp={openApp} />)}
+              {!notifs.length && <p className="nempty">Nenhuma notificação por enquanto</p>}
+            </div>
+          </div>
+
+          <button type="button" className={`ph-qa l${torch ? " on" : ""}`} aria-pressed={torch} aria-label="Lanterna" onClick={() => setTorch((t) => !t)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 2h8v4l-1.5 2v2h-5V8L8 6V2zm1.5 10h5v9a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-9z" /></svg>
+          </button>
+          <button type="button" className="ph-qa r" aria-label="Câmera" onClick={() => setShot((n) => n + 1)}>
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.5" /></svg>
+          </button>
+        </div>
+
+        {/* ---------- painel (app) ---------- */}
+        <div className={`ph-app${lock ? "" : " on"}`} aria-hidden={lock}>
+          <div className="pa-head"><span className="nico">Z</span><h5>Painel</h5><small>Hoje</small></div>
+          <div className="ph-wallet">
+            <small>Faturamento do mês</small>
+            <b>{brl(shown)}</b>
+            <i key={`w${tick}`}>+ {brl(last.v)} agora</i>
+          </div>
+          <div className="pa-chart" aria-hidden="true">
+            {bars.map((h, i) => <span key={i} style={{ ["--h" as any]: `${h}%` }} />)}
+            <span key={`h${tick}`} className="hot" style={{ ["--h" as any]: `${40 + last.v}%` }} />
+          </div>
+          <h4>Últimas vendas</h4>
+          <ul className="ph-list">{log.map((x) => <li key={x.id}>
+            <span className="ph-dot">{x.n[0]}</span>
+            <span><b>{x.n}</b><small>{x.c} · {ago(x.age)}</small></span><em>+ {brl(x.v)}</em></li>)}</ul>
+        </div>
+
+        {!lock && tick > 0 && <div className="ph-toast" key={`t${tick}`} role="status">
+          <span className="nico">Z</span>
+          <div><div className="ntop"><b>Venda aprovada</b><small>agora</small></div>
+            <p>{last.n} · {brl(last.v)}</p></div>
+        </div>}
+
+        <div className="ph-tag">Exemplo demonstrativo</div>
+        <button type="button" className="ph-home" aria-label={lock ? "Desbloquear e abrir o painel" : "Voltar à tela de bloqueio"} onClick={flip} />
+        <div className="ph-glare" />
+        {shot > 0 && <div className="ph-flash" key={shot} />}
+      </div>
     </div>
+    <small className="ph-hint">{lock
+      ? "Toque nas notificações, arraste para o lado para limpar e use a barra de baixo para desbloquear."
+      : "Toque na barra de baixo para voltar à tela de bloqueio."}</small>
   </div>;
 }
 
