@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { INVITE } from "../content";
 import { Dash } from "../ui/Shell";
-import { api, brl, dt, useApi } from "../ui/api";
+import { api, brl, dt, useApi, ApiError } from "../ui/api";
 import { Async, Avatar, Badge, BarChart, Empty, Kpi, LineChart, Pager } from "../ui/kit";
 
 const botHref = (id: string, tab = "visao-geral") => `/dashboard/bots/${encodeURIComponent(id)}/${tab}`;
@@ -118,22 +118,93 @@ function Clients({ botId }: { botId: string }) {
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={setPage} /></>}</Async></>;
 }
 
-function Settings({ botId }: { botId: string }) {
-  const q = useApi<any>(`/api/bots/${encodeURIComponent(botId)}`);
-  const [f, setF] = useState<any>(null); const [msg, setMsg] = useState("");
-  return <><h1>Configurações</h1><Async q={q}>{(b) => { const v = f ?? { name: b.name, avatar_url: b.avatar_url ?? "" };
-    return <div className="card form"><label>Nome de exibição<input className="input" value={v.name} onChange={(e) => setF({ ...v, name: e.target.value })} /></label>
-      <label>URL do avatar (https)<input className="input" value={v.avatar_url} onChange={(e) => setF({ ...v, avatar_url: e.target.value })} /></label>
-      <button className="btn solid" onClick={async () => { try { await api(`/api/bots/${encodeURIComponent(botId)}`, { method: "PATCH", json: { name: v.name, avatar_url: v.avatar_url || null } }); setMsg("Salvo."); q.reload(); }
-        catch { setMsg("Não foi possível salvar. Verifique os campos."); } }}>Salvar</button>{msg && <p>{msg}</p>}
-      <small>Licença: <Badge s={b.license_status} /> · ID interno: {b.bot_id}</small></div>; }}</Async></>;
+const SHARD_ERR: Record<string, string> = {
+  shard_not_configured: "A integração com a Shard Cloud ainda não foi configurada no servidor (SHARD_API_TOKEN).",
+  shard_auth: "A Shard Cloud recusou o token do servidor. Gere outro em Settings > API Token e atualize a variável.",
+  shard_not_found: "Esse app não foi encontrado na Shard Cloud.",
+  shard_rejected: "A Shard Cloud recusou a operação.",
+  shard_unavailable: "A Shard Cloud não respondeu. Tente de novo em instantes.",
+  too_fast: "Aguarde alguns segundos antes de enviar outro comando.",
+  license_inactive: "A licença deste bot não está ativa, então ele não pode ser iniciado.",
+  not_shard_app: "Este bot não está vinculado a um app da Shard Cloud.",
+  session_expired: "Sua sessão expirou. Entre novamente.",
+};
+const errText = (e: unknown) => { const x = e as any;
+  return (SHARD_ERR[x?.code] ?? "Não foi possível concluir a ação.") + (x?.code === "shard_rejected" && x?.detail ? ` (${x.detail})` : ""); };
+const STATUS: Record<string, [string, string]> = { running: ["Online", "approved"], stopped: ["Desligado", "canceled"], pending: ["Iniciando", "pending"], not_found: ["Não encontrado", "expired"] };
+const uptime = (sec: number) => { const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}min` : `${m}min`; };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function ShardPanel({ botId }: { botId: string }) {
+  const enc = encodeURIComponent(botId);
+  const q = useApi<any>(`/api/bots/${enc}/shard`);
+  const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState("");
+  const act = async (action: "run" | "stop" | "restart", ask?: string) => {
+    if (ask && !confirm(ask)) return;
+    setBusy(action); setMsg("");
+    try {
+      await api(`/api/bots/${enc}/power`, { method: "POST", json: { action } });
+      setMsg("Comando enviado. Atualizando o status…");
+      for (let i = 0; i < 5; i++) { await sleep(3000); q.reload(); }
+      setMsg("");
+    } catch (e) { setMsg(errText(e)); } finally { setBusy(null); }
+  };
+  return <div className="card form">
+    <div className="row between"><h3 style={{ margin: 0 }}>Bot na Shard Cloud</h3>
+      {q.data?.linked && (() => { const [l, c] = STATUS[q.data.status] ?? [q.data.status, ""]; return <span className={`badge ${c}`}>{l}</span>; })()}</div>
+    {q.loading && !q.data && <div className="state"><span className="spin" /> Consultando a Shard Cloud…</div>}
+    {q.error && <div className="state err">{errText(q.error)} <button className="btn sm" onClick={q.reload}>Tentar de novo</button></div>}
+    {q.data && !q.data.linked && <div className="state">Este bot não está vinculado a um app da Shard Cloud, por isso não há status nem controles.</div>}
+    {q.data?.linked && <>
+      <dl className="kv"><dt>Nome</dt><dd>{q.data.name ?? "—"}</dd><dt>ID do app</dt><dd><code>{q.data.id}</code></dd>
+        <dt>Linguagem</dt><dd>{[q.data.language, q.data.version].filter(Boolean).join(" ") || "—"}</dd>
+        <dt>Recursos</dt><dd>{q.data.ram ? `${q.data.ram} MB` : "—"} · {q.data.vcpu ?? "—"} vCPU</dd>
+        <dt>Online há</dt><dd>{q.data.status === "running" ? uptime(q.data.uptime_seconds) : "—"}</dd></dl>
+      {q.data.blocked_until && <div className="state err">App bloqueado{q.data.blocked_reason ? `: ${q.data.blocked_reason}` : ""}.</div>}
+      <div className="row wrapx">
+        <button className="btn solid" disabled={!!busy || q.data.status === "running" || q.data.status === "pending"} onClick={() => act("run")}>{busy === "run" ? "Iniciando…" : "Iniciar"}</button>
+        <button className="btn" disabled={!!busy || q.data.status !== "running"} onClick={() => act("restart", "Reiniciar o bot agora?")}>{busy === "restart" ? "Reiniciando…" : "Reiniciar"}</button>
+        <button className="btn" disabled={!!busy || q.data.status === "stopped"} onClick={() => act("stop", "Desligar o bot? Ele ficará offline até você iniciar de novo.")}>{busy === "stop" ? "Desligando…" : "Desligar"}</button>
+      </div></>}
+    {msg && <p className="muted" style={{ margin: 0 }}>{msg}</p>}
+  </div>;
 }
 
-export function BotPage({ botId, tab }: { botId: string; tab: "visao-geral" | "clientes" | "vendas" | "configuracoes" }) {
+function Settings({ botId }: { botId: string }) {
+  const q = useApi<any>(`/api/bots/${encodeURIComponent(botId)}`);
+  const [f, setF] = useState<any>(null); const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null); const [saving, setSaving] = useState(false);
+  return <><h1>Configurações</h1>
+    <div className="grid2" style={{ alignItems: "start" }}>
+      <ShardPanel botId={botId} />
+      <Async q={q}>{(b) => { const v = f ?? { name: b.name, avatar_url: b.avatar_url ?? "" };
+        return <div className="card form"><h3 style={{ margin: 0 }}>Identidade do bot</h3>
+          <label>Nome<input className="input" value={v.name} maxLength={60} onChange={(e) => setF({ ...v, name: e.target.value })} />
+            <small>Também é alterado na Shard Cloud.</small></label>
+          <label>Ícone (URL https)<div className="row">{v.avatar_url ? <img src={v.avatar_url} alt="" className="bav" /> : <span className="bav ph">{(v.name ?? "?")[0]}</span>}
+            <input className="input" placeholder="https://…" value={v.avatar_url} onChange={(e) => setF({ ...v, avatar_url: e.target.value })} /></div>
+            <small>A Shard Cloud não tem ícone de app, então ele existe só aqui no site.</small></label>
+          <button className="btn solid" disabled={saving} onClick={async () => { setSaving(true); setMsg(null);
+            try { await api(`/api/bots/${encodeURIComponent(botId)}`, { method: "PATCH", json: { name: v.name, avatar_url: v.avatar_url || null } });
+              setMsg({ ok: true, t: "Salvo." }); setF(null); q.reload(); }
+            catch (e) { setMsg({ ok: false, t: (e as ApiError).status === 422 ? "Confira o nome (1 a 60 caracteres) e o ícone (URL https)." : errText(e) }); }
+            finally { setSaving(false); } }}>{saving ? "Salvando…" : "Salvar"}</button>
+          {msg && <p className={msg.ok ? "" : "muted"} style={{ margin: 0 }}>{msg.t}</p>}
+          <small>Licença: <Badge s={b.license_status} /> · ID interno: {b.bot_id}</small></div>; }}</Async>
+    </div></>;
+}
+
+function BetaTab({ title }: { title: string }) {
+  return <><div className="row"><h1>{title}</h1><span className="betatag">Beta</span></div>
+    <div className="empty card"><h2>Em breve</h2><p>Esta área está em fase beta e ainda não foi liberada. Avisaremos quando estiver disponível.</p></div></>;
+}
+
+export function BotPage({ botId, tab }: { botId: string; tab: "visao-geral" | "clientes" | "vendas" | "produtos" | "ticket" | "configuracoes" }) {
   const info = useApi<any>(`/api/bots/${encodeURIComponent(botId)}`);
   return <Dash bot={{ id: botId, name: info.data?.name }}>
     {info.error?.status === 404 ? <div className="empty"><h2>Bot não encontrado</h2><p>Ele não existe ou não está vinculado à sua conta.</p><a className="btn" href="/dashboard/bots">Voltar</a></div> :
       tab === "visao-geral" ? <Overview botId={botId} /> : tab === "clientes" ? <Clients botId={botId} /> :
-      tab === "vendas" ? <Sales botId={botId} /> : <Settings botId={botId} />}
+      tab === "vendas" ? <Sales botId={botId} /> :
+      tab === "produtos" ? <BetaTab title="Produtos" /> : tab === "ticket" ? <BetaTab title="Ticket" /> : <Settings botId={botId} />}
   </Dash>;
 }
