@@ -297,3 +297,18 @@ body{overflow-x:hidden}
   .kv{grid-template-columns:1fr;gap:2px 0}.kv dd{margin-bottom:10px}
   .whois{min-width:0}
 }
+
+/* ===== tela de loading do painel ===== */
+.pageloader{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+  background:rgba(0,0,0,.94);animation:plin .25s .12s both} /* só aparece se demorar mais de ~0,1 s */
+.pageloader p{margin:0;color:var(--mut);font-size:.95rem}
+@keyframes plin{from{opacity:0}to{opacity:1}}
+.pl-bar{position:absolute;top:0;left:0;width:100%;height:3px;overflow:hidden;background:var(--line)}
+.pl-bar::after{content:"";display:block;height:100%;width:38%;background:#fff;animation:plbar 1.1s ease-in-out infinite}
+@keyframes plbar{0%{transform:translateX(-100%)}100%{transform:translateX(270%)}}
+.pl-mark{position:relative;display:grid;place-items:center;width:64px;height:64px;border-radius:20px;background:#fff;color:#000;
+  font-family:var(--display);font-weight:800;font-size:1.9rem;animation:plpulse 1.4s ease-in-out infinite}
+.pl-mark::before{content:"";position:absolute;inset:-9px;border-radius:26px;border:1px solid rgba(255,255,255,.35);animation:plring 1.4s ease-out infinite}
+@keyframes plpulse{0%,100%{transform:scale(1)}50%{transform:scale(.94)}}
+@keyframes plring{0%{opacity:.9;transform:scale(.9)}100%{opacity:0;transform:scale(1.25)}}
+@media (prefers-reduced-motion:reduce){.pl-bar::after{animation:none;width:100%}.pl-mark,.pl-mark::before{animation:none}.pageloader{animation:none}}
