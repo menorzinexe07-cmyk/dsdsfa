@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
 import { Public } from "../ui/Shell";
 import { cacheClear, useApi } from "../ui/api";
@@ -9,54 +9,87 @@ const useSettings = () => {
     invite: s.data?.site?.invite ?? INVITE, title: s.data?.site?.hero_title, text: s.data?.site?.hero_text };
 };
 
-// ---- prévias demonstrativas (dados fictícios, sempre identificadas como exemplo) ----
-function HeroStage() {
-  const bars = [32, 46, 38, 62, 52, 78, 70, 92];
-  return <div className="stage">
-    <div className="dc" role="img" aria-label="Exemplo demonstrativo de um canal de vendas no Discord">
-      <div className="dc-head"><span># pedidos</span><i>Exemplo demonstrativo</i></div>
-      <div className="dc-body">
-        <div className="msg" style={{ ["--i" as any]: 0 }}><div className="av u">M</div><div><b>Marina</b><p>Quero o plano mensal do Produto Exemplo.</p></div></div>
-        <div className="msg" style={{ ["--i" as any]: 1 }}><div className="av">Z</div><div><b>ZyraSallers<span className="tag">BOT</span></b>
-          <div className="embed"><strong>Carrinho aberto</strong>Produto Exemplo · R$ 20,00<br />Pague com PIX para continuar.</div></div></div>
-        <div className="msg" style={{ ["--i" as any]: 2 }}><div className="av">Z</div><div><b>ZyraSallers<span className="tag">BOT</span></b>
-          <div className="embed"><strong>Pagamento aprovado</strong>Pedido #1042 confirmado.</div></div></div>
-        <div className="msg" style={{ ["--i" as any]: 3 }}><div className="av">Z</div><div><b>ZyraSallers<span className="tag">BOT</span></b>
-          <div className="embed"><strong>Entrega realizada</strong>O produto foi enviado para Marina.</div></div></div>
-      </div>
-      <div className="dc-foot">Dados fictícios, apenas para demonstração.</div>
-    </div>
-    <div className="mini" aria-hidden="true">
-      <div className="mini-head">Visão geral <i>Exemplo</i></div>
-      <div className="mini-k"><div><span>Faturamento</span><b>R$ 1.240</b></div><div><span>Vendas</span><b>62</b></div></div>
-      <div className="bars">{bars.map((h, i) => <span key={i} style={{ ["--h" as any]: `${h}%`, ["--i" as any]: i }} />)}</div>
+/* ---------- prévias demonstrativas: dados fictícios, sempre marcados como exemplo ---------- */
+function Phone() {
+  const rows = [["Produto Exemplo", "agora", "+ R$ 20,00"], ["Plano Mensal", "há 4 min", "+ R$ 38,50"], ["Produto Pro", "há 8 min", "+ R$ 59,90"]];
+  return <div className="phone" role="img" aria-label="Exemplo demonstrativo do painel no celular">
+    <div className="phone-notch" />
+    <div className="phone-screen">
+      <div className="ph-status"><span>9:41</span><span>5G</span></div>
+      <div className="ph-toast"><span className="av">Z</span>
+        <div><b>ZyraSallers</b><small>agora</small><p>Venda aprovada de R$ 20,00</p></div></div>
+      <div className="ph-wallet"><small>Faturamento do mês</small><b>R$ 1.240,00</b><i>+ R$ 60,00 hoje</i></div>
+      <h4>Últimas vendas</h4>
+      <ul className="ph-list">{rows.map(([n, t, v]) => <li key={n}><span><b>{n}</b><small>{t}</small></span><em>{v}</em></li>)}</ul>
+      <div className="ph-tag">Exemplo demonstrativo</div>
     </div>
   </div>;
 }
 
-const ICONS: ReactNode[] = [
-  <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" /></svg>,
-  <svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 1 1 21 11.5Z" /></svg>,
-  <svg viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></svg>,
-  <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
-  <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z" /></svg>,
+type Msg = { title: string; text: string; btn?: string };
+const MOCKS: { channel: string; lead: string; msgs: Msg[] }[] = [
+  { channel: "loja", lead: "Do carrinho ao pagamento, sem sair do servidor.", msgs: [
+    { title: "Produto Exemplo", text: "Valor à vista: R$ 20,00", btn: "Comprar" },
+    { title: "Carrinho aberto", text: "Escolha a forma de pagamento para continuar." },
+    { title: "Pagamento aprovado", text: "Pedido #1042 confirmado." }] },
+  { channel: "ticket-0042", lead: "Receba pedidos de ajuda e responda sem perder nenhum.", msgs: [
+    { title: "Ticket aberto", text: "Cliente pediu ajuda com um pedido.", btn: "Assumir" },
+    { title: "Atendimento", text: "A equipe respondeu no canal do ticket." }] },
+  { channel: "sorteios", lead: "Mantenha seus produtos e sua comunidade em movimento.", msgs: [
+    { title: "Sorteio", text: "Prêmio: Produto Exemplo", btn: "Participar" },
+    { title: "Mensagem automática", text: "Novidades do servidor publicadas no canal." }] },
+  { channel: "seguranca", lead: "Controle quem entra e proteja seu servidor.", msgs: [
+    { title: "Proteção anti-raid", text: "Entradas em massa monitoradas." },
+    { title: "Verificação CAPTCHA", text: "Novo membro aguardando verificação." },
+    { title: "Auto cargo", text: "Cargo aplicado ao novo membro." }] },
+  { channel: "ferramentas", lead: "Ferramentas extras para o que o seu servidor precisa.", msgs: [
+    { title: "Código 2FA", text: "Ferramenta disponível no bot." },
+    { title: "Venda de Robux", text: "Ferramenta disponível no bot." }] },
 ];
-const SPAN = ["s4", "s2", "s2", "s4", "s6"];
-const BLURB = ["Do carrinho ao pagamento, sem sair do servidor.", "Responda clientes sem perder nenhum pedido.",
-  "Mantenha seus produtos e sua comunidade em movimento.", "Controle quem entra e proteja seu servidor.", "Ferramentas extras para o que o seu servidor precisa."];
 
-const Chips = ({ items }: { items: string[] }) => <div className="chips">{items.map((i) => <span className="chip" key={i}>{i}</span>)}</div>;
+function FeatureTabs() {
+  const [i, setI] = useState(0);
+  const g = FEATURES[i], m = MOCKS[i];
+  return <div className="ftabs">
+    <div className="ftab-list" role="tablist" aria-label="Categorias de funcionalidades">
+      {FEATURES.map((f, k) => <button key={f.title} role="tab" id={`tab-${k}`} aria-selected={k === i} aria-controls="tabpanel"
+        className={k === i ? "on" : ""} onClick={() => setI(k)}>{f.title}</button>)}
+    </div>
+    <div className="ftab-panel" id="tabpanel" role="tabpanel" aria-labelledby={`tab-${i}`}>
+      <div className="ftab-info"><h3>{g.title}</h3><p>{m.lead}</p>
+        <div className="chips">{g.items.map((it) => <span className="chip" key={it}>{it}</span>)}</div></div>
+      <div className="mock" key={i}>
+        <div className="mock-head"># {m.channel}<i>Exemplo demonstrativo</i></div>
+        <div className="mock-body">{m.msgs.map((x, k) => <div className="mock-msg" key={k} style={{ ["--i" as any]: k }}>
+          <div className="av">Z</div><div><b>ZyraSallers<span className="tag">BOT</span></b>
+            <div className="embed"><strong>{x.title}</strong>{x.text}</div>{x.btn && <span className="mbtn">{x.btn}</span>}</div></div>)}</div>
+      </div>
+    </div>
+  </div>;
+}
 
-function Features() {
-  return <div className="bento">{FEATURES.map((g, i) => <div key={g.title} data-reveal className={`cell spot ${SPAN[i] ?? "s2"}`}>
-    <div className="ico">{ICONS[i]}</div><h3>{g.title}</h3><p>{BLURB[i]}</p><Chips items={g.items} /></div>)}</div>;
+function PanelMock() {
+  const bars = [30, 44, 36, 58, 50, 74, 66, 88, 70, 94];
+  return <div className="win" role="img" aria-label="Exemplo demonstrativo do painel de vendas">
+    <div className="win-bar"><i /><i /><i /><span>zyra-apps.xyz/dashboard</span><em>Exemplo demonstrativo</em></div>
+    <div className="win-body">
+      <div className="win-kpis">
+        <div><small>Faturamento</small><b>R$ 1.240,00</b></div><div><small>Vendas</small><b>62</b></div>
+        <div><small>Ticket médio</small><b>R$ 20,00</b></div><div><small>Clientes</small><b>38</b></div></div>
+      <div className="win-chart">{bars.map((h, k) => <span key={k} style={{ height: `${h}%` }} />)}</div>
+      <ul className="win-list"><li><span className="cav ph">M</span>Marina<small>Produto Exemplo</small><em>R$ 20,00</em></li>
+        <li><span className="cav ph">L</span>Lucas<small>Plano Mensal</small><em>R$ 38,50</em></li></ul>
+    </div>
+  </div>;
 }
 
 function Marquee() {
-  const items = FEATURES.flatMap((f) => f.items).slice(0, 18);
+  const items = GATEWAYS.flatMap((g) => g.title === "Modo manual" ? ["Pagamento manual"] : g.items);
   const row = (hidden?: boolean) => items.map((i) => <span className="chip" key={i + (hidden ? "b" : "")} aria-hidden={hidden}>{i}</span>);
-  return <div className="marquee" aria-label="Algumas funcionalidades do ZyraSallers"><div className="track">{row()}{row(true)}</div></div>;
+  return <div className="marquee" aria-label="Gateways de pagamento compatíveis"><div className="track">{row()}{row(true)}</div></div>;
 }
+
+const Chips = ({ items }: { items: string[] }) => <div className="chips">{items.map((i) => <span className="chip" key={i}>{i}</span>)}</div>;
 
 const GSUB: Record<string, string> = { "Automáticos": "Confirmação automática do pagamento", "Integração via IMAP": "Leitura de e-mails de confirmação", "Modo manual": "Você confere cada pagamento" };
 function Gateways() {
@@ -69,7 +102,7 @@ function FaqList({ items, search }: { items: typeof FAQ_DEFAULT; search?: boolea
   const list = useMemo(() => items.filter((i) => (i.q + i.a).toLowerCase().includes(q.toLowerCase())), [items, q]);
   return <div className="faqlist">
     {search && <input className="input" placeholder="Pesquisar nas perguntas" value={q} onChange={(e) => setQ(e.target.value)} />}
-    {list.map((i) => <details key={i.q} className="faq"><summary>{i.q}</summary><p>{i.a}</p></details>)}
+    {list.map((i, k) => <details key={i.q} className="faq"><summary><span><span className="fnum">{String(k + 1).padStart(2, "0")}</span>{i.q}</span></summary><p>{i.a}</p></details>)}
     {!list.length && <p className="muted">Nenhuma pergunta encontrada.</p>}
   </div>;
 }
@@ -82,6 +115,16 @@ function PriceBox({ price, invite }: { price: string; invite: string }) {
   </div>;
 }
 
+const autoGateways = GATEWAYS[0].items.length, imapBanks = GATEWAYS[1].items.length;
+function Stats({ price }: { price: string }) {
+  return <div className="stats wrap" data-reveal>
+    <div><b>{price.replace(" por mês", "")}</b><span>por mês</span></div>
+    <div><b>{autoGateways}</b><span>gateways automáticos</span></div>
+    <div><b>{imapBanks}</b><span>bancos via IMAP</span></div>
+    <div><b>PT-BR</b><span>bot e painel em português</span></div>
+  </div>;
+}
+
 export function Home() {
   const s = useSettings();
   return <Public>
@@ -90,34 +133,36 @@ export function Home() {
         <h1>{s.title ?? <>Automatize suas vendas <em>dentro do Discord.</em></>}</h1>
         <p className="lead">{s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}</p>
         <div className="actions"><a className="btn solid lg" href="/zyrasallers">Conhecer o ZyraSallers</a>
-          <a className="btn lg" href="/zyrasallers#funcionalidades">Ver funcionalidades</a></div>
-        <small>A partir de <b>{s.price}</b></small></div>
-      <HeroStage /></div></section>
+          <a className="btn lg" href="#recursos">Ver funcionalidades</a></div></div>
+      <Phone /></div></section>
 
-    <Marquee />
+    <Stats price={s.price} />
 
-    <section className="sec"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Tudo que o seu servidor precisa para vender</h2>
-        <p>Pedidos, pagamentos, clientes, divulgação e administração em um único bot.</p></div>
-      <Features /></div></section>
+    <section className="sec" id="recursos"><div className="wrap">
+      <div className="sec-head" data-reveal><h2>O bot cuida do servidor inteiro</h2>
+        <p>Cada aba mostra uma parte do que o ZyraSallers oferece dentro do seu servidor.</p></div>
+      <FeatureTabs /></div></section>
 
     <section className="sec rule" id="pagamentos"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Receba pelo método que você já usa</h2><p>Gateways automáticos, integração via IMAP e modo manual.</p></div>
-      <Gateways /></div></section>
+      <div className="sec-head" data-reveal><h2>Receba pelo método que você já usa</h2><p>Gateways automáticos, integração via IMAP e modo manual.</p></div></div>
+      <Marquee /><div className="wrap" style={{ marginTop: 40 }}><Gateways /></div></section>
 
-    <section className="sec rule"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Do servidor ao painel em três passos</h2></div>
-      <div className="steps">
-        <div className="step spot" data-reveal><h3>Adquira o bot</h3><p>A compra acontece no servidor oficial da Zyra Applications no Discord.</p></div>
-        <div className="step spot d1" data-reveal><h3>Entre com o Discord</h3><p>O site identifica os bots vinculados à sua conta.</p></div>
-        <div className="step spot d2" data-reveal><h3>Acompanhe suas vendas</h3><p>Veja estatísticas, clientes e histórico de cada bot no dashboard.</p></div>
-      </div></div></section>
+    <section className="sec rule"><div className="wrap two2">
+      <div data-reveal><h2>Acompanhe tudo no seu painel</h2>
+        <p className="lead2">Entre com o Discord e veja os bots vinculados à sua conta, com estatísticas, clientes e histórico de vendas de cada um.</p>
+        <ol className="steps2">
+          <li><b>Adquira o bot</b><span>A compra acontece no servidor oficial da Zyra Applications no Discord.</span></li>
+          <li><b>Entre com o Discord</b><span>O site identifica os bots vinculados à sua conta.</span></li>
+          <li><b>Acompanhe suas vendas</b><span>Estatísticas, clientes e histórico de cada bot, no computador ou no celular.</span></li></ol>
+        <a className="btn solid" href="/login">Acessar painel</a></div>
+      <div data-reveal><PanelMock /></div></div></section>
 
     <section className="sec tight"><div className="wrap"><PriceBox price={s.price} invite={s.invite} /></div></section>
 
-    <section className="sec rule"><div className="wrap narrow">
-      <div className="sec-head" data-reveal><h2>Perguntas frequentes</h2></div>
-      <FaqList items={s.faq.slice(0, 5)} /><p style={{ marginTop: 24 }}><a href="/faq">Ver todas as perguntas</a></p></div></section>
+    <section className="sec rule"><div className="wrap two2 top">
+      <div data-reveal><h2>Antes de começar</h2><p className="lead2">Ficou com alguma pergunta que não está aqui? Fale com a gente no Discord.</p>
+        <a className="btn" href={s.invite} target="_blank" rel="noreferrer">Entrar no Discord</a></div>
+      <div><FaqList items={s.faq.slice(0, 6)} /><p style={{ marginTop: 22 }}><a href="/faq">Ver todas as perguntas</a></p></div></div></section>
 
     <section className="cta"><div className="wrap"><h2>Pronto para vender mais pelo Discord?</h2>
       <a className="btn solid lg" href={s.invite} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a></div></section>
@@ -132,12 +177,12 @@ export function Product() {
         <p className="lead">Bot brasileiro desenvolvido pela Zyra Applications, focado em vendas automatizadas dentro do Discord. Possui ferramentas para gerenciar pedidos, pagamentos, clientes, divulgação de produtos e administração do servidor.</p>
         <div className="actions"><a className="btn solid lg" href={s.invite} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a>
           <a className="btn lg" href="/dashboard">Acessar meu dashboard</a></div>
-        <small>Preço informado: <b>{s.price}</b></small></div>
-      <HeroStage /></div></section>
-    <Marquee />
+        <small className="muted" style={{ display: "block", marginTop: 22 }}>Preço informado: <b style={{ color: "#fff" }}>{s.price}</b></small></div>
+      <Phone /></div></section>
+    <Stats price={s.price} />
     <section className="sec" id="funcionalidades"><div className="wrap">
       <div className="sec-head" data-reveal><h2>Funcionalidades</h2>
-        <p>Funcionalidades informadas do produto. A disponibilidade de cada uma depende da configuração real do seu bot.</p></div><Features /></div></section>
+        <p>Funcionalidades informadas do produto. A disponibilidade de cada uma depende da configuração real do seu bot.</p></div><FeatureTabs /></div></section>
     <section className="sec rule"><div className="wrap">
       <div className="sec-head" data-reveal><h2>Bancos e gateways de pagamento</h2></div><Gateways /></div></section>
     <section className="sec rule"><div className="wrap narrow"><div className="sec-head" data-reveal><h2>Perguntas frequentes</h2></div><FaqList items={s.faq} /></div></section>
@@ -163,6 +208,8 @@ export function Faq() {
 
 export function Login() {
   useEffect(() => { cacheClear(); }, []); // nunca mostrar dados em cache de outra conta
+  const me = useApi<any>("/api/me");
+  useEffect(() => { if (me.data?.discord_id) window.location.replace("/dashboard"); }, [me.data]); // já conectado: vai direto
   const p = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const erro = p.get("erro");
   const HINT: Record<string, string> = {
@@ -177,7 +224,9 @@ export function Login() {
   return <Public><div className="wrap"><div className="loginbox"><h1 style={{ fontSize: "2.2rem" }}>Entrar</h1>
     <p style={{ margin: "14px 0 24px" }}>Use sua conta Discord para acessar o painel dos seus bots. Pedimos apenas a permissão de identificação: seu ID, nome e avatar.</p>
     {msg && <div className="state err">{msg}</div>}
-    <a className="btn solid lg" href="/api/auth/discord">Entrar com Discord</a></div></div></Public>;
+    {me.data?.discord_id ? <div className="state">Você já está conectado. Abrindo o painel…</div>
+      : <a className="btn solid lg" href="/api/auth/discord">Entrar com Discord</a>}
+    <p className="muted" style={{ marginTop: 18, fontSize: ".88rem" }}>Neste aparelho você continua conectado por até 60 dias de uso.</p></div></div></Public>;
 }
 
 export function Legal({ kind }: { kind: "privacidade" | "termos" }) {
