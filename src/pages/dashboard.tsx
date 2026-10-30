@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { INVITE } from "../content";
 import { Dash } from "../ui/Shell";
-import { api, brl, dt, useApi, ApiError } from "../ui/api";
+import { api, brl, dt, useApi } from "../ui/api";
 import { Async, Avatar, Badge, BarChart, Empty, Kpi, LineChart, Pager } from "../ui/kit";
 
 const botHref = (id: string, tab = "visao-geral") => `/dashboard/bots/${encodeURIComponent(id)}/${tab}`;
@@ -15,7 +15,7 @@ function NoBots() {
 function BotCard({ b }: { b: any }) {
   return <a className="card bot clickable" href={botHref(b.bot_id)}>
     <div className="row">{b.avatar_url ? <img src={b.avatar_url} alt="" className="bav" /> : <span className="bav ph">{(b.name ?? "?")[0]}</span>}
-      <div><h3>{b.name}{b.bot_id === "bot_teste" && <span className="testtag">Teste</span>}</h3><small>ID interno: {b.bot_id}</small></div></div>
+      <div><h3>{b.name}</h3><small>ID interno: {b.bot_id}</small></div></div>
     <dl><dt>Adquirido em</dt><dd>{dt(b.acquired_at)}</dd><dt>Licença</dt><dd><Badge s={b.license_status} /></dd>
       <dt>Integração</dt><dd><Badge s={b.integration.status} /></dd></dl>
     <span className="btn solid">Gerenciar</span></a>;
@@ -51,13 +51,6 @@ export function DashboardBots() {
 // ---------- Painel de um bot ----------
 const PERIODS: Record<string, number | null> = { "7": 7, "30": 30, "90": 90, all: null };
 
-function SeedTest({ onDone }: { onDone: () => void }) {
-  const [busy, setBusy] = useState(false);
-  return <div className="state">Este é o seu Bot Teste (visível só para admins). Gere vendas de exemplo para ver o painel funcionando.{" "}
-    <button className="btn sm solid" disabled={busy} onClick={async () => { setBusy(true); try { await api("/api/admin/test-sales", { method: "POST" }); onDone(); } finally { setBusy(false); } }}>
-      {busy ? "Gerando…" : "Gerar vendas de exemplo"}</button></div>;
-}
-
 function Overview({ botId }: { botId: string }) {
   const [per, setPer] = useState("30");
   const from = PERIODS[per] ? new Date(Date.now() - PERIODS[per]! * 864e5).toISOString() : "";
@@ -71,7 +64,6 @@ function Overview({ botId }: { botId: string }) {
       let acc = 0; const evo = daily.map((d: any) => ({ label: d.label, value: (acc += d.gross) }));
       const sc = s.status_counts ?? {};
       return <>
-        {botId === "bot_teste" && s.all.sales === 0 && <SeedTest onDone={q.reload} />}
         <div className="kpis">
           <Kpi label="Faturamento" value={brl(s.revenue)} hint="Líquido enviado (ou bruto, se não houver líquido)" /><Kpi label="Bruto informado" value={brl(s.gross)} /><Kpi label="Total líquido informado" value={brl(s.net)} />
           <Kpi label="Vendas" value={s.sales} /><Kpi label="Ticket médio" value={brl(s.avg_ticket)} />
@@ -126,50 +118,6 @@ function Clients({ botId }: { botId: string }) {
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={setPage} /></>}</Async></>;
 }
 
-const SAMPLE_SALE = `{
-  "id_venda": "venda_001",
-  "valor_liquido": 19.00,
-  "valor_bruto": 20.00,
-  "taxas": 1.00,
-  "cliente": { "id": "123456789012345678", "nome": "Cliente", "icone": "https://cdn.discordapp.com/avatars/..." },
-  "produto": { "id": "produto_001", "nome": "Produto vendido" },
-  "metodo_pagamento": "pix",
-  "gateway": "mercadopago",
-  "status": "approved",
-  "vendido_em": "2026-10-29T12:30:00Z"
-}`;
-
-function Integration({ botId }: { botId: string }) {
-  const q = useApi<any>(`/api/bots/${encodeURIComponent(botId)}/integration`);
-  const [name, setName] = useState(""); const [secret, setSecret] = useState<string | null>(null); const [err, setErr] = useState("");
-  const act = async (fn: () => Promise<any>) => { setErr(""); try { const r = await fn(); if (r?.secret) setSecret(r.secret); q.reload(); }
-    catch (e) { setErr((e as ApiError).code === "credential_limit" ? "Limite de 5 credenciais ativas atingido." : "Não foi possível concluir a ação."); } };
-  const base = `/api/bots/${encodeURIComponent(botId)}/credentials`;
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return <><h1>API e integração</h1><Async q={q}>{(d) => <>
-    <div className="kpis"><Kpi label="Status" value={<Badge s={d.status} />} /><Kpi label="Última requisição" value={dt(d.last_request_at)} />
-      <Kpi label="Último evento" value={d.last_event_id ?? "—"} /><Kpi label="Vendas recebidas" value={d.sales_received} /><Kpi label="Eventos processados" value={d.events_processed} /></div>
-    {d.status === "aguardando" && <div className="state">Configuração pendente: nenhum evento recebido ainda. A integração só aparece como ativa após o Bot Manager enviar um evento real.</div>}
-    <h2>Erros recentes</h2>{d.recent_errors.length ? <ul className="plain">{d.recent_errors.map((e: any, i: number) => <li key={i}>{dt(e.received_at)} — {e.type}: {e.error}</li>)}</ul> : <Empty>Nenhum erro recente.</Empty>}
-    <h2>Credenciais de API</h2>
-    {secret && <div className="state ok"><b>Guarde agora, este segredo não será exibido novamente:</b><code className="secret">{secret}</code>
-      <button className="btn sm" onClick={() => setSecret(null)}>Já guardei</button></div>}
-    {err && <div className="state err">{err}</div>}
-    <div className="filters"><input className="input" placeholder="Nome da credencial" value={name} onChange={(e) => setName(e.target.value)} />
-      <button className="btn solid" disabled={!name.trim()} onClick={() => act(async () => { const r = await api(base, { method: "POST", json: { name } }); setName(""); return r; })}>Criar credencial</button></div>
-    <div className="tablewrap"><table><thead><tr><th>Nome</th><th>Prefixo</th><th>Criada</th><th>Último uso</th><th>Estado</th><th /></tr></thead><tbody>
-      {d.credentials.map((c: any) => <tr key={c.id}><td>{c.name}</td><td><code>{c.key_prefix}…</code></td><td>{dt(c.created_at)}</td><td>{dt(c.last_used_at)}</td>
-        <td>{c.revoked_at ? "Revogada" : "Ativa"}</td><td>{!c.revoked_at && <>
-          <button className="btn sm" onClick={() => confirm("Gerar novo segredo e revogar o atual?") && act(() => api(`${base}/${c.id}/rotate`, { method: "POST" }))}>Rotacionar</button>{" "}
-          <button className="btn sm" onClick={() => confirm("Revogar esta credencial?") && act(() => api(`${base}/${c.id}`, { method: "DELETE" }))}>Revogar</button></>}</td></tr>)}
-      {!d.credentials.length && <tr><td colSpan={6}>Nenhuma credencial exclusiva deste bot.</td></tr>}</tbody></table></div>
-    <h2>Como configurar o Bot Manager</h2>
-    <p>Envie eventos com o cabeçalho <code>Authorization: Bearer SEU_SEGREDO</code>. Cada <code>event_id</code> deve ser único; reenviar o mesmo evento é seguro.</p>
-    <ul className="plain"><li><code>POST {origin}/api/v1/apps/purchases</code> — registra compra/propriedade</li><li><code>POST {origin}/venda/{botId}/salles</code> — registra venda (formato simples abaixo)</li><li><code>POST {origin}/api/v1/apps/sales</code> — registra venda (formato completo)</li>
-      <li><code>PATCH {origin}/api/v1/apps/sales/:saleId?bot_id=…</code> — atualiza status</li><li><code>GET {origin}/api/v1/apps/:botId/sales | stats | customers</code></li></ul>
-    <pre>{SAMPLE_SALE}</pre><p className="muted">Obrigatórios: valor_liquido, cliente.id, cliente.nome e produto.nome. O restante é opcional. Reenviar o mesmo id_venda não duplica.</p></>}</Async></>;
-}
-
 function Settings({ botId }: { botId: string }) {
   const q = useApi<any>(`/api/bots/${encodeURIComponent(botId)}`);
   const [f, setF] = useState<any>(null); const [msg, setMsg] = useState("");
@@ -181,11 +129,11 @@ function Settings({ botId }: { botId: string }) {
       <small>Licença: <Badge s={b.license_status} /> · ID interno: {b.bot_id}</small></div>; }}</Async></>;
 }
 
-export function BotPage({ botId, tab }: { botId: string; tab: "visao-geral" | "clientes" | "vendas" | "integracao" | "configuracoes" }) {
+export function BotPage({ botId, tab }: { botId: string; tab: "visao-geral" | "clientes" | "vendas" | "configuracoes" }) {
   const info = useApi<any>(`/api/bots/${encodeURIComponent(botId)}`);
   return <Dash bot={{ id: botId, name: info.data?.name }}>
     {info.error?.status === 404 ? <div className="empty"><h2>Bot não encontrado</h2><p>Ele não existe ou não está vinculado à sua conta.</p><a className="btn" href="/dashboard/bots">Voltar</a></div> :
       tab === "visao-geral" ? <Overview botId={botId} /> : tab === "clientes" ? <Clients botId={botId} /> :
-      tab === "vendas" ? <Sales botId={botId} /> : tab === "integracao" ? <Integration botId={botId} /> : <Settings botId={botId} />}
+      tab === "vendas" ? <Sales botId={botId} /> : <Settings botId={botId} />}
   </Dash>;
 }
