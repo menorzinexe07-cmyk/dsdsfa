@@ -55,8 +55,8 @@ export function Public({ children }: { children: ReactNode }) {
 export function Dash({ children, bot }: { children: ReactNode; bot?: { id: string; name?: string } }) {
   const me = useApi<any>("/api/me");
   const p = typeof window !== "undefined" ? window.location.pathname : "";
-  const item = (href: string, label: string, ext = false) =>
-    <a key={href} href={href} className={!ext && p === href ? "on" : ""} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})}>{label}</a>;
+  const item = (href: string, label: string, ext = false, beta = false) =>
+    <a key={href} href={href} className={!ext && p === href ? "on" : ""} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})}>{label}{beta && <em className="pillbeta">Beta</em>}</a>;
   const base = bot ? `/dashboard/bots/${encodeURIComponent(bot.id)}` : "";
   const out = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); window.location.href = "/"; };
   return <div className="dash">
@@ -64,7 +64,7 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
       <nav>
         {item("/dashboard", "Início")}{item("/dashboard/bots", "Meus bots")}
         {bot && <><hr /><small>{bot.name ?? "Bot"}</small>
-          {item(`${base}/visao-geral`, "Visão geral")}{item(`${base}/clientes`, "Meus Clientes")}{item(`${base}/vendas`, "Vendas")}
+          {item(`${base}/visao-geral`, "Visão geral")}{item(`${base}/clientes`, "Meus Clientes")}{item(`${base}/vendas`, "Vendas")}{item(`${base}/produtos`, "Produtos", false, true)}{item(`${base}/ticket`, "Ticket", false, true)}
           {item(INVITE, "Suporte", true)}{item(`${base}/configuracoes`, "Configurações")}</>}
         {me.data?.is_admin && <><hr />{item("/admin", "Administração")}</>}
       </nav></aside>
