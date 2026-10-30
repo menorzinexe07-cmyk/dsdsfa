@@ -52,14 +52,41 @@ export function Public({ children }: { children: ReactNode }) {
   </div>;
 }
 
+/** Tela de loading do painel: aparece ao clicar num link e enquanto a página nova carrega. */
+export function PageLoader() {
+  return <div className="pageloader" role="status" aria-live="polite" aria-label="Carregando">
+    <div className="pl-bar" />
+    <div className="pl-mark"><span>Z</span></div>
+    <p>Carregando…</p>
+  </div>;
+}
+
 export function Dash({ children, bot }: { children: ReactNode; bot?: { id: string; name?: string } }) {
   const me = useApi<any>("/api/me");
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => { // mostra o loading assim que o usuário clica num link interno
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
+      const u = new URL(a.href, location.href);
+      if (u.origin !== location.origin || (u.pathname === location.pathname && u.search === location.search)) return;
+      setLeaving(true);
+      clearTimeout(t); t = setTimeout(() => setLeaving(false), 8000); // segurança: nunca fica preso
+    };
+    const reset = () => setLeaving(false); // voltar pelo histórico do navegador
+    document.addEventListener("click", onClick);
+    window.addEventListener("pageshow", reset);
+    return () => { document.removeEventListener("click", onClick); window.removeEventListener("pageshow", reset); clearTimeout(t); };
+  }, []);
   const p = typeof window !== "undefined" ? window.location.pathname : "";
   const item = (href: string, label: string, ext = false, beta = false) =>
     <a key={href} href={href} className={!ext && p === href ? "on" : ""} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})}>{label}{beta && <em className="pillbeta">Beta</em>}</a>;
   const base = bot ? `/dashboard/bots/${encodeURIComponent(bot.id)}` : "";
   const out = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); window.location.href = "/"; };
   return <div className="dash">
+    {(leaving || (me.loading && !me.data)) && <PageLoader />}
     <aside><Logo />
       <nav>
         {item("/dashboard", "Início")}{item("/dashboard/bots", "Meus bots")}
