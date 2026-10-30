@@ -31,9 +31,9 @@ export function DashboardHome() {
     {d.alerts.map((a: any, i: number) => <div key={i} className={`state ${a.level === "erro" ? "err" : ""}`}>{a.text}</div>)}
     <h2>Seus bots</h2><div className="grid3">{d.bots.map((b: any) => <BotCard key={b.bot_id} b={b} />)}</div>
     <h2>Últimas vendas registradas</h2>
-    {d.recent_sales.length ? <div className="tablewrap"><table><thead><tr><th>Data</th><th>Cliente</th><th>Produto</th><th>Bruto</th><th>Status</th></tr></thead>
-      <tbody>{d.recent_sales.map((s: any) => <tr key={s.bot_id + s.sale_id}><td>{dt(s.sold_at)}</td><td>{s.customer_name ?? "—"}</td>
-        <td>{s.product_name ?? "—"}</td><td>{brl(s.amount_gross)}</td><td><Badge s={s.status} /></td></tr>)}</tbody></table></div>
+    {d.recent_sales.length ? <div className="tablewrap"><table className="rt"><thead><tr><th>Data</th><th>Cliente</th><th>Produto</th><th>Valor</th><th>Status</th></tr></thead>
+      <tbody>{d.recent_sales.map((s: any) => <tr key={s.bot_id + s.sale_id}><td data-label="Data">{dt(s.sold_at)}</td><td data-label="Cliente">{s.customer_name ?? "—"}</td>
+        <td data-label="Produto">{s.product_name ?? "—"}</td><td data-label="Valor">{brl(s.amount_net ?? s.amount_gross)}</td><td data-label="Status"><Badge s={s.status} /></td></tr>)}</tbody></table></div>
       : <Empty>Nenhuma venda registrada ainda.</Empty>}
     <h2>Atividade recente</h2>
     {d.activity.length ? <ul className="plain">{d.activity.map((e: any, i: number) =>
@@ -98,10 +98,14 @@ function Sales({ botId }: { botId: string }) {
       <input className="input" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value, page: 1 })} />
       <input className="input" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value, page: 1 })} /></div>
     <Async q={q}>{(d) => !d.items.length ? <Empty>Nenhuma venda encontrada.</Empty> : <>
-      <div className="tablewrap"><table><thead><tr>{th("sold_at", "Data e hora")}{th("customer_name", "Cliente")}<th>ID Discord</th><th>Produto</th><th>Pagamento</th>
+      <div className="tablewrap"><table className="rt"><thead><tr>{th("sold_at", "Data e hora")}{th("customer_name", "Cliente")}<th>ID Discord</th><th>Produto</th><th>Pagamento</th>
         {th("amount_gross", "Bruto")}<th>Taxas</th>{th("amount_net", "Líquido")}{th("status", "Status")}<th>ID da venda</th></tr></thead>
-        <tbody>{d.items.map((s: any) => <tr key={s.sale_id}><td>{dt(s.sold_at)}</td><td><span className="whois"><Avatar src={s.customer_icon} name={s.customer_name} size={24} /> {s.customer_name ?? "—"}</span></td><td>{s.customer_discord_id ?? "—"}</td>
-          <td>{s.product_name ?? "—"}</td><td>{[s.payment_method, s.gateway].filter(Boolean).join(" · ") || "—"}</td><td>{brl(s.amount_gross)}</td><td>{brl(s.fees)}</td><td>{brl(s.amount_net)}</td><td><Badge s={s.status} /></td><td><code>{s.sale_id}</code></td></tr>)}</tbody></table></div>
+        <tbody>{d.items.map((s: any) => <tr key={s.sale_id}><td data-label="Data">{dt(s.sold_at)}</td>
+          <td data-label="Cliente"><span className="whois"><Avatar src={s.customer_icon} name={s.customer_name} size={24} /> {s.customer_name ?? "—"}</span></td>
+          <td data-label="ID Discord">{s.customer_discord_id ?? "—"}</td><td data-label="Produto">{s.product_name ?? "—"}</td>
+          <td data-label="Pagamento">{[s.payment_method, s.gateway].filter(Boolean).join(" · ") || "—"}</td>
+          <td data-label="Bruto">{brl(s.amount_gross)}</td><td data-label="Taxas">{brl(s.fees)}</td><td data-label="Líquido">{brl(s.amount_net)}</td>
+          <td data-label="Status"><Badge s={s.status} /></td><td data-label="ID da venda"><code>{s.sale_id}</code></td></tr>)}</tbody></table></div>
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={(page) => setF({ ...f, page })} /></>}</Async></>;
 }
 
@@ -111,10 +115,11 @@ function Clients({ botId }: { botId: string }) {
   return <><h1>Meus Clientes</h1>
     <input className="input" placeholder="Pesquisar por nome ou ID Discord" value={q0} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
     <Async q={q}>{(d) => !d.items.length ? <Empty>Nenhum cliente encontrado.</Empty> : <>
-      <div className="tablewrap"><table><thead><tr><th>Cliente</th><th>ID Discord</th><th>Primeira compra</th><th>Última compra</th><th>Compras</th><th>Total gasto</th><th>Produtos</th><th /></tr></thead>
-        <tbody>{d.items.map((c: any) => <tr key={c.k}><td><span className="whois"><Avatar src={c.icon} name={c.name} size={24} /> {c.name ?? "—"}</span></td><td>{c.did ?? "—"}</td><td>{dt(c.first_at)}</td><td>{dt(c.last_at)}</td>
-          <td>{c.purchases}</td><td>{brl(c.spent)}</td><td>{c.products?.join(", ") || "—"}</td>
-          <td>{c.did && <a href={`${botHref(botId, "vendas")}?q=${c.did}`}>Histórico</a>}</td></tr>)}</tbody></table></div>
+      <div className="tablewrap"><table className="rt"><thead><tr><th>Cliente</th><th>ID Discord</th><th>Primeira compra</th><th>Última compra</th><th>Compras</th><th>Total gasto</th><th>Produtos</th><th /></tr></thead>
+        <tbody>{d.items.map((c: any) => <tr key={c.k}><td data-label="Cliente"><span className="whois"><Avatar src={c.icon} name={c.name} size={24} /> {c.name ?? "—"}</span></td>
+          <td data-label="ID Discord">{c.did ?? "—"}</td><td data-label="Primeira compra">{dt(c.first_at)}</td><td data-label="Última compra">{dt(c.last_at)}</td>
+          <td data-label="Compras">{c.purchases}</td><td data-label="Total gasto">{brl(c.spent)}</td><td data-label="Produtos">{c.products?.join(", ") || "—"}</td>
+          <td data-label="Histórico">{c.did && <a href={`${botHref(botId, "vendas")}?q=${c.did}`}>Ver vendas</a>}</td></tr>)}</tbody></table></div>
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={setPage} /></>}</Async></>;
 }
 
