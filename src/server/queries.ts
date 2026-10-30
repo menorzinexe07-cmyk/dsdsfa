@@ -24,7 +24,7 @@ export async function getStats(botId: string, p: URLSearchParams) {
 export async function listSales(botId: string, p: URLSearchParams) {
   const pg = paging(p);
   let qb = db.from("sales").select(
-    "sale_id,customer_discord_id,customer_name,product_id,product_name,amount_gross,fees,amount_net,amounts_source,currency,status,sold_at,received_at",
+    "sale_id,customer_discord_id,customer_name,customer_icon,payment_method,gateway,product_id,product_name,amount_gross,fees,amount_net,amounts_source,currency,status,sold_at,received_at",
     { count: "exact" }).eq("bot_id", botId);
   const status = p.get("status");
   if (status && STATUSES.includes(status)) qb = qb.eq("status", status);
