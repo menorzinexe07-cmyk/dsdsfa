@@ -163,8 +163,16 @@ export function Faq() {
 
 export function Login() {
   const p = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const erro = p.get("erro");
+  const HINT: Record<string, string> = {
+    state: "A verificação de segurança do login expirou. Tente entrar de novo.",
+    token: "O Discord recusou o código de login. Confira o DISCORD_CLIENT_SECRET e o redirect cadastrado.",
+    usuario: "Não foi possível ler seu perfil no Discord. Tente novamente.",
+    banco: "Não foi possível salvar seu perfil. Confira SUPABASE_URL, a chave de serviço e as migrações do banco.",
+    sessao: "Não foi possível criar sua sessão. Confira as migrações do banco.",
+  };
   const msg = p.get("expirada") ? "Sua sessão expirou. Entre novamente."
-    : p.get("erro") ? "Não foi possível concluir o login com o Discord. Tente novamente." : null;
+    : erro ? `${HINT[erro] ?? "Não foi possível concluir o login com o Discord. Tente novamente."} (código: ${erro})` : null;
   return <Public><div className="wrap"><div className="loginbox"><h1 style={{ fontSize: "2.2rem" }}>Entrar</h1>
     <p style={{ margin: "14px 0 24px" }}>Use sua conta Discord para acessar o painel dos seus bots. Pedimos apenas a permissão de identificação: seu ID, nome e avatar.</p>
     {msg && <div className="state err">{msg}</div>}
