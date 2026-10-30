@@ -12,10 +12,10 @@ function ListTab({ kind }: { kind: string }) {
   const q = useApi<any>(`/api/admin/list/${kind}?page=${page}&pageSize=25`);
   const act = async (fn: () => Promise<any>) => { await fn().catch(() => alert("Falha ao executar a ação.")); q.reload(); };
   return <Async q={q}>{(d) => !d.items.length ? <Empty>Nenhum registro.</Empty> : <>
-    <div className="tablewrap"><table><thead><tr>{Object.keys(d.items[0]).filter((k) => k !== "payload").map((k) => <th key={k}>{k}</th>)}
+    <div className="tablewrap"><table className="rt"><thead><tr>{Object.keys(d.items[0]).filter((k) => k !== "payload").map((k) => <th key={k}>{k}</th>)}
       {(kind === "credentials" || kind === "bots") && <th />}</tr></thead>
       <tbody>{d.items.map((r: any, i: number) => <tr key={i}>
-        {Object.entries(r).filter(([k]) => k !== "payload").map(([k, v]) => <td key={k}>
+        {Object.entries(r).filter(([k]) => k !== "payload").map(([k, v]) => <td key={k} data-label={k}>
           {k.endsWith("_at") ? dt(v as string) : Array.isArray(v) ? (v as string[]).join(", ") : typeof v === "object" && v ? JSON.stringify(v) : String(v ?? "—")}</td>)}
         {kind === "credentials" && <td>{!r.revoked_at && <button className="btn sm" onClick={() => confirm("Revogar credencial?") && act(() => api(`/api/admin/credentials/${r.id}/revoke`, { method: "POST" }))}>Revogar</button>}</td>}
         {kind === "bots" && <td><select className="input auto" value={r.license_status} onChange={(e) => act(() => api(`/api/admin/bots/${encodeURIComponent(r.bot_id)}`, { method: "PATCH", json: { license_status: e.target.value } }))}>
