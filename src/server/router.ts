@@ -1,4 +1,4 @@
-import { authenticate, handleHealth, handlePurchase, handleSale, handleSaleStatus, json } from "./api";
+import { authenticate, handleHealth, handlePurchase, handleSale, handleSaleStatus, handleVenda, json } from "./api";
 import { adminRoutes } from "./adminApi";
 import { loginRedirect, logout } from "./auth";
 import { sameOrigin, userRoutes, type Route } from "./dashboardApi";
@@ -37,12 +37,22 @@ const m2m: Route[] = [
   }],
 ];
 
+// API simples de vendas: https://SEU_DOMINIO/venda/{botId}/salles
+const venda: Route[] = [
+  ["POST", /^\/venda\/([^/]+)\/(?:salles|sales)$/, (req, m) => handleVenda(req, decodeURIComponent(m[1]))],
+  ["GET", /^\/venda\/([^/]+)\/(?:salles|sales)$/, async (req, m) => {
+    const botId = decodeURIComponent(m[1]);
+    const a = await authenticate(req, botId); if (a.err) return a.err;
+    return json(await listSales(botId, new URL(req.url).searchParams));
+  }],
+];
+
 const auth: Route[] = [
   ["GET", /^\/api\/auth\/discord$/, () => loginRedirect()],
   ["POST", /^\/api\/auth\/logout$/, (req) => (sameOrigin(req) ? logout(req) : json({ error: "bad_origin" }, 403))],
 ];
 
-const routes = [...m2m, ...auth, ...userRoutes, ...adminRoutes];
+const routes = [...m2m, ...venda, ...auth, ...userRoutes, ...adminRoutes];
 
 /** Monte em um único catch-all: src/routes/api.$.ts */
 export async function handleApi(req: Request): Promise<Response> {
