@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
 import { Public } from "../ui/Shell";
 import { cacheClear, useApi } from "../ui/api";
@@ -10,18 +10,87 @@ const useSettings = () => {
 };
 
 /* ---------- prévias demonstrativas: dados fictícios, sempre marcados como exemplo ---------- */
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const SALES = [
+  { n: "Produto Exemplo", v: 20 }, { n: "Plano Mensal", v: 38.5 }, { n: "Produto Pro", v: 59.9 },
+  { n: "Produto Exemplo", v: 20 }, { n: "Plano Mensal", v: 38.5 }, { n: "Produto Pro", v: 59.9 },
+];
+
+function useCountUp(target: number, ms = 800) {
+  const [val, setVal] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setVal(target); from.current = target; return; }
+    const a = from.current, t0 = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+      const x = a + (target - a) * e;
+      setVal(x); from.current = x;
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return val;
+}
+
 function Phone() {
-  const rows = [["Produto Exemplo", "agora", "+ R$ 20,00"], ["Plano Mensal", "há 4 min", "+ R$ 38,50"], ["Produto Pro", "há 8 min", "+ R$ 59,90"]];
+  const [id, setId] = useState(1);           // contador de "vendas" simuladas
+  const [total, setTotal] = useState(1180);  // faturamento fictício
+  const [list, setList] = useState([{ id: 0, ...SALES[0], t: "agora" }]);
+
+  // primeira venda entra logo; depois, uma nova a cada 4s
+  useEffect(() => {
+    const push = (k: number) => {
+      const s = SALES[k % SALES.length];
+      setId(k + 1);
+      setTotal((t) => t + s.v);
+      setList((l) => [{ id: k + 1, ...s, t: "agora" }, ...l.map((x) => ({ ...x, t: x.t === "agora" ? "há 1 min" : x.t }))].slice(0, 3));
+    };
+    let k = 0;
+    const first = setTimeout(() => push(k++), 900);
+    const iv = setInterval(() => push(k++), 4000);
+    return () => { clearTimeout(first); clearInterval(iv); };
+  }, []);
+
+  const sale = list[0];
+  const shown = useCountUp(total);
+
   return <div className="phone" role="img" aria-label="Exemplo demonstrativo do painel no celular">
-    <div className="phone-notch" />
+    <i className="pbtn pbtn-l" /><i className="pbtn pbtn-r" />
     <div className="phone-screen">
-      <div className="ph-status"><span>9:41</span><span>5G</span></div>
-      <div className="ph-toast"><span className="av">Z</span>
-        <div><b>ZyraSallers</b><small>agora</small><p>Venda aprovada de R$ 20,00</p></div></div>
-      <div className="ph-wallet"><small>Faturamento do mês</small><b>R$ 1.240,00</b><i>+ R$ 60,00 hoje</i></div>
-      <h4>Últimas vendas</h4>
-      <ul className="ph-list">{rows.map(([n, t, v]) => <li key={n}><span><b>{n}</b><small>{t}</small></span><em>{v}</em></li>)}</ul>
+      <div className="phone-notch" key={`n${id}`} />
+      <div className="ph-status">
+        <span className="ph-time">9:41</span>
+        <span className="ph-icons">
+          <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1" /><rect x="4.5" y="5" width="3" height="6" rx="1" /><rect x="9" y="2.5" width="3" height="8.5" rx="1" /><rect x="13.5" y="0" width="3" height="11" rx="1" /></svg>
+          <svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M1.5 4a9.5 9.5 0 0 1 13 0" /><path d="M4 6.7a6 6 0 0 1 8 0" /><circle cx="8" cy="9.3" r="1" fill="currentColor" stroke="none" /></svg>
+          <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x=".5" y=".5" width="22" height="11" rx="3.5" stroke="currentColor" opacity=".45" /><rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor" /><path d="M24 4v4c.8-.3 1.5-1.1 1.5-2S24.8 4.3 24 4Z" fill="currentColor" opacity=".5" /></svg>
+        </span>
+      </div>
+
+      <div className="ph-toast" key={`t${id}`}>
+        <span className="av">Z</span>
+        <div><div className="ph-toast-top"><b>ZyraSallers</b><small>agora</small></div>
+          <p>Venda aprovada de {brl(sale.v)}</p></div>
+      </div>
+
+      <div className="ph-body">
+        <div className="ph-wallet">
+          <small>Faturamento do mês</small>
+          <b>{brl(shown)}</b>
+          <i key={`w${id}`}>+ {brl(sale.v)} agora</i>
+        </div>
+        <h4>Últimas vendas</h4>
+        <ul className="ph-list">{list.map((x) => <li key={x.id}>
+          <span className="ph-dot">{x.n[0]}</span>
+          <span><b>{x.n}</b><small>{x.t}</small></span><em>+ {brl(x.v)}</em></li>)}</ul>
+      </div>
+
       <div className="ph-tag">Exemplo demonstrativo</div>
+      <div className="ph-home" />
+      <div className="ph-glare" />
     </div>
   </div>;
 }
