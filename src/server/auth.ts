@@ -82,12 +82,19 @@ export async function logout(req: Request): Promise<Response> {
 }
 
 /** Identidade vem SEMPRE da sessão, nunca de ID enviado pelo navegador. */
-export async function getSessionUser(req: Request): Promise<string | null> {
-  const t = readCookie(req, "zy_session");
-  if (!t) return null;
-  const { data } = await db.from("sessions").select("discord_id,expires_at")
-    .eq("token_hash", sha256(t)).gt("expires_at", new Date().toISOString()).maybeSingle();
-  return data?.discord_id ?? null;
+const sessionMemo = new WeakMap<Request, Promise<string | null>>(); // 1 consulta por requisição, nunca entre requisições
+export function getSessionUser(req: Request): Promise<string | null> {
+  let p = sessionMemo.get(req);
+  if (!p) {
+    const t = readCookie(req, "zy_session");
+    p = t
+      ? Promise.resolve(db.from("sessions").select("discord_id,expires_at")
+          .eq("token_hash", sha256(t)).gt("expires_at", new Date().toISOString()).maybeSingle())
+          .then(({ data }) => data?.discord_id ?? null)
+      : Promise.resolve(null);
+    sessionMemo.set(req, p);
+  }
+  return p;
 }
 
 export async function getMyBots(discordId: string) {
@@ -121,8 +128,11 @@ export async function isAdminUid(uid: string) {
 }
 
 /** Admins sempre têm o "Bot Teste" vinculado, para abrir o dashboard mesmo sem compras reais. */
+const testBotReady = new Map<string, number>(); // uid -> até quando não precisa repetir (60 s)
 export async function ensureTestBot(uid: string) {
-  if (!(await isAdminUid(uid))) return;
+  if ((testBotReady.get(uid) ?? 0) > Date.now()) return;
+  if (!(await isAdminUid(uid))) { testBotReady.set(uid, Date.now() + 60_000); return; }
   await db.from("apps").upsert({ bot_id: TEST_BOT_ID, name: "Bot Teste" }, { onConflict: "bot_id", ignoreDuplicates: true });
   await db.from("app_owners").upsert({ bot_id: TEST_BOT_ID, discord_user_id: uid, active: true }, { onConflict: "bot_id,discord_user_id" });
+  testBotReady.set(uid, Date.now() + 60_000);
 }
