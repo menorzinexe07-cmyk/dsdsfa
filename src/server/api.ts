@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
+import { isShardId, syncShardName } from "./shard";
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 export const json = (b: unknown, status = 200) =>
@@ -75,7 +76,15 @@ async function ingest(req: Request, schema: z.ZodTypeAny, fn: "ingest_purchase" 
   return json({ result: data, duplicate: dup }, dup ? 200 : 201); // reenvio é seguro
 }
 
-export const handlePurchase = (req: Request) => ingest(req, purchaseSchema, "ingest_purchase");
+export async function handlePurchase(req: Request) {
+  const copy = req.clone();
+  const res = await ingest(req, purchaseSchema, "ingest_purchase");
+  if (res.ok) { // compra aceita: busca o nome real do app na Shard Cloud (melhor esforço)
+    const botId = (await copy.json().catch(() => null))?.bot_id;
+    if (typeof botId === "string" && isShardId(botId)) await syncShardName(botId);
+  }
+  return res;
+}
 export const handleSale = (req: Request) => ingest(req, saleSchema, "ingest_sale");
 
 export async function handleSaleStatus(req: Request, botId: string, saleId: string) {
