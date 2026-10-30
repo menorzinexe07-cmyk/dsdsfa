@@ -60,7 +60,7 @@ export const userRoutes: Route[] = [
     const alerts: { level: string; text: string }[] = [];
     for (const b of bots) {
       if (b.license_status !== "active") alerts.push({ level: "erro", text: `A licença de ${b.name} está ${b.license_status}.` });
-      if (b.integration.status === "aguardando" && b.bot_id !== "bot_teste") alerts.push({ level: "info", text: `A integração de ${b.name} ainda não recebeu eventos do Bot Manager.` });
+      if (b.integration.status === "aguardando") alerts.push({ level: "info", text: `A integração de ${b.name} ainda não recebeu eventos do Bot Manager.` });
       if (b.integration.status === "sem_eventos_recentes") alerts.push({ level: "aviso", text: `${b.name} está sem eventos há mais de 7 dias.` });
     }
     return json({ bots, recent_sales: sales.data ?? [], activity: events.data ?? [], alerts });
