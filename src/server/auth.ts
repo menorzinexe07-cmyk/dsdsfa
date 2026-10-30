@@ -2,6 +2,10 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "./db";
 
 const prod = process.env.NODE_ENV === "production";
+/** Quanto tempo o aparelho permanece conectado desde o último uso (renova sozinho). */
+export const SESSION_DAYS = 60;
+/** Teto absoluto: depois disso, pede login de novo mesmo com uso contínuo. */
+const SESSION_MAX_DAYS = 180;
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const cookie = (n: string, v: string, maxAge: number) =>
   `${n}=${v}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${prod ? "; Secure" : ""}`;
@@ -58,7 +62,8 @@ export async function handleCallback(req: Request): Promise<Response> {
 
     step = "sessao";
     const token = randomBytes(32).toString("base64url");
-    const days = 7;
+    const days = SESSION_DAYS;
+    await db.from("sessions").delete().eq("discord_id", String(user.id)).lt("expires_at", new Date().toISOString()); // limpa vencidas (melhor esforço)
     const ins = await db.from("sessions").insert({
       token_hash: sha256(token), discord_id: String(user.id),
       expires_at: new Date(Date.now() + days * 864e5).toISOString(),
@@ -79,6 +84,29 @@ export async function logout(req: Request): Promise<Response> {
   const t = readCookie(req, "zy_session");
   if (t) await db.from("sessions").delete().eq("token_hash", sha256(t));
   return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": cookie("zy_session", "", 0) } });
+}
+
+/**
+ * Mantém o aparelho conectado: se a sessão já passou de ~1 semana, estende o prazo e devolve o novo Set-Cookie.
+ * Chamada pelo /api/me (o painel chama em toda página). Sessões com mais de 180 dias não renovam.
+ */
+export async function renewSession(req: Request): Promise<string | null> {
+  const t = readCookie(req, "zy_session");
+  if (!t) return null;
+  const h = sha256(t);
+  const { data } = await db.from("sessions").select("expires_at,created_at").eq("token_hash", h).maybeSingle();
+  if (!data) return null;
+  if (Date.now() - Date.parse(data.created_at) > SESSION_MAX_DAYS * 864e5) return null;
+  if (Date.parse(data.expires_at) - Date.now() > (SESSION_DAYS - 7) * 864e5) return null; // renova no máx. 1x por semana
+  await db.from("sessions").update({ expires_at: new Date(Date.now() + SESSION_DAYS * 864e5).toISOString() }).eq("token_hash", h);
+  return cookie("zy_session", t, SESSION_DAYS * 86400);
+}
+
+/** Encerra TODAS as sessões do usuário (todos os aparelhos). */
+export async function logoutEverywhere(req: Request): Promise<Response> {
+  const uid = await getSessionUser(req);
+  if (uid) await db.from("sessions").delete().eq("discord_id", uid);
+  return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json", "Set-Cookie": cookie("zy_session", "", 0) } });
 }
 
 /** Identidade vem SEMPRE da sessão, nunca de ID enviado pelo navegador. */
