@@ -47,7 +47,8 @@ export const userRoutes: Route[] = [
 
   ["GET", /^\/api\/public\/settings$/, async () => {
     const { data } = await db.from("platform_settings").select("key,value").in("key", ["price", "faq", "site"]);
-    return json(Object.fromEntries((data ?? []).map((r) => [r.key, r.value])));
+    return new Response(JSON.stringify(Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))), {
+      headers: { "content-type": "application/json", "cache-control": "public, s-maxage=60, stale-while-revalidate=300" } });
   }],
 
   ["GET", /^\/api\/dashboard\/summary$/, async (req) => {
