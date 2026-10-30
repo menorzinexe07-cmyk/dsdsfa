@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "./db";
-import { getMyBots, getSessionUser, isAdmin, requireBotOwner } from "./auth";
+import { ensureTestBot, getMyBots, getSessionUser, isAdmin, requireBotOwner } from "./auth";
 import { createCredential, json } from "./api";
 import { getStats, listCustomers, listSales } from "./queries";
 
@@ -41,6 +41,7 @@ export const userRoutes: Route[] = [
   ["GET", /^\/api\/dashboard\/summary$/, async (req) => {
     const uid = await getSessionUser(req);
     if (!uid) return json({ error: "session_expired" }, 401);
+    await ensureTestBot(uid);
     const mine = await getMyBots(uid);
     const ids = mine.map((b) => b.bot_id);
     if (!ids.length) return json({ bots: [], recent_sales: [], activity: [], alerts: [] });
@@ -59,7 +60,7 @@ export const userRoutes: Route[] = [
     const alerts: { level: string; text: string }[] = [];
     for (const b of bots) {
       if (b.license_status !== "active") alerts.push({ level: "erro", text: `A licença de ${b.name} está ${b.license_status}.` });
-      if (b.integration.status === "aguardando") alerts.push({ level: "info", text: `A integração de ${b.name} ainda não recebeu eventos do Bot Manager.` });
+      if (b.integration.status === "aguardando" && b.bot_id !== "bot_teste") alerts.push({ level: "info", text: `A integração de ${b.name} ainda não recebeu eventos do Bot Manager.` });
       if (b.integration.status === "sem_eventos_recentes") alerts.push({ level: "aviso", text: `${b.name} está sem eventos há mais de 7 dias.` });
     }
     return json({ bots, recent_sales: sales.data ?? [], activity: events.data ?? [], alerts });
@@ -68,6 +69,7 @@ export const userRoutes: Route[] = [
   ["GET", /^\/api\/bots$/, async (req) => {
     const uid = await getSessionUser(req);
     if (!uid) return json({ error: "session_expired" }, 401);
+    await ensureTestBot(uid);
     const mine = await getMyBots(uid);
     const { data: ints } = await db.from("app_integrations").select("*").in("bot_id", mine.map((b) => b.bot_id));
     return json({ bots: mine.map((b: any) => {
