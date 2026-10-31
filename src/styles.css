@@ -406,3 +406,79 @@ body footer.foot .copy-links a:hover { color: #fff; }
   border: 1px solid rgba(255, 255, 255, 0.14); background: transparent; color: #71717a; font-size: 0.85rem;
 }
 .intro-skip:hover { color: #fff; border-color: rgba(255, 255, 255, 0.35); }
+
+/* ───── Home nova ───── */
+body .sec-head.center { margin-inline: auto; text-align: center; }
+body .faq summary > span { display: flex; align-items: baseline; gap: 14px; }
+body .faq .n { font-style: normal; font-size: 0.82rem; font-weight: 600; letter-spacing: 0.08em; color: #71717a; font-variant-numeric: tabular-nums; }
+
+.hm-hero { padding-block: clamp(56px, 9vw, 120px) 0; overflow: hidden; }
+.hm-hero .wrap { display: grid; justify-items: center; text-align: center; }
+.hm-hero h1 { margin-top: 20px; max-width: 15ch; font-size: clamp(2.8rem, 8vw, 5.6rem); }
+.hm-hero .lead { margin-top: 22px; max-width: 54ch; font-size: clamp(1.02rem, 2vw, 1.2rem); color: #a1a1aa; }
+.hm-hero .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 34px; }
+.hm-stats { display: grid; grid-template-columns: repeat(3, auto); gap: 18px clamp(28px, 6vw, 80px); margin-top: clamp(40px, 6vw, 64px); }
+.hm-stats li { display: grid; gap: 4px; justify-items: center; }
+.hm-stats b { color: #fff; font-size: clamp(1.05rem, 2.2vw, 1.4rem); font-weight: 700; letter-spacing: -0.02em; }
+.hm-stats span { color: #71717a; font-size: 0.86rem; }
+@media (max-width: 640px) { .hm-stats { grid-template-columns: 1fr; } }
+
+/* celular de exemplo */
+.hm-phone-wrap { position: relative; margin-top: clamp(40px, 6vw, 72px); display: grid; justify-items: center; }
+.hm-phone {
+  position: relative; width: min(320px, 86vw); height: 470px; padding: 10px 10px 0; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16); border-bottom: 0; border-radius: 44px 44px 0 0; background: #0a0a0b;
+  -webkit-mask-image: linear-gradient(#000 72%, transparent); mask-image: linear-gradient(#000 72%, transparent);
+}
+.hm-notch { position: absolute; top: 14px; left: 50%; width: 92px; height: 24px; margin-left: -46px; border-radius: 999px; background: #000; z-index: 2; }
+.hm-screen { height: 100%; padding: 52px 14px 0; border-radius: 34px 34px 0 0; background: #050506; text-align: left; display: grid; align-content: start; gap: 14px; }
+.hm-notif { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 12px; border-radius: 16px; background: #151517; border: 1px solid rgba(255, 255, 255, 0.09); }
+.hm-notif b { color: #fff; font-size: 0.82rem; }
+.hm-notif p { color: #d4d4d8; font-size: 0.8rem; line-height: 1.3; }
+.hm-notif time { color: #71717a; font-size: 0.7rem; align-self: start; }
+.hm-ic, .hm-av { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: #fff; color: #000; font-weight: 800; }
+.hm-balance { padding: 16px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.09); background: #0e0e10; display: grid; gap: 4px; }
+.hm-balance small { color: #71717a; font-size: 0.75rem; }
+.hm-balance strong { color: #fff; font-size: 1.55rem; letter-spacing: -0.03em; }
+.hm-listh { color: #a1a1aa; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.hm-sales { display: grid; gap: 8px; }
+.hm-sales li { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; }
+.hm-sales .hm-av { width: 32px; height: 32px; border-radius: 50%; background: #1d1d20; color: #fff; font-size: 0.8rem; }
+.hm-sales b { display: block; color: #fff; font-size: 0.82rem; font-weight: 600; }
+.hm-sales small { color: #71717a; font-size: 0.72rem; }
+.hm-sales em { font-style: normal; color: #4ade80; font-size: 0.82rem; font-weight: 600; }
+.hm-fake { margin-top: 14px; color: #71717a; font-size: 0.78rem; text-align: center; }
+.hm-phone-wrap .hm-fake { position: absolute; bottom: 14px; margin: 0; }
+
+/* blocos alternados */
+.hm-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(32px, 6vw, 88px); align-items: center; padding-block: clamp(32px, 5vw, 64px); }
+.hm-row.rev .hm-copy { order: 2; }
+.hm-tag { display: inline-block; margin-bottom: 16px; color: #a1a1aa; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.hm-copy h3 { font-size: clamp(1.6rem, 3vw, 2.3rem); line-height: 1.08; }
+.hm-copy p { margin-top: 14px; max-width: 46ch; color: #a1a1aa; }
+.hm-copy ul { display: grid; gap: 10px; margin-top: 22px; }
+.hm-copy li { position: relative; padding-left: 26px; color: #d4d4d8; font-size: 0.97rem; }
+.hm-copy li::before { content: "\2713"; position: absolute; left: 0; color: #4ade80; font-weight: 700; }
+.hm-show { min-width: 0; }
+@media (max-width: 900px) { .hm-row { grid-template-columns: 1fr; } .hm-row.rev .hm-copy { order: 0; } }
+
+/* cartões de exemplo */
+.hm-card { display: grid; gap: 18px; padding: clamp(20px, 3vw, 30px); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.1); background: #0a0a0b; text-align: left; }
+.hm-card-head { display: flex; align-items: center; justify-content: space-between; color: #fff; }
+.hm-ok, .hm-soft { padding: 3px 11px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid rgba(255, 255, 255, 0.16); color: #a1a1aa; }
+.hm-ok { color: #4ade80; border-color: rgba(74, 222, 128, 0.35); }
+.hm-pixrow { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 22px; align-items: center; }
+.hm-pixrow .zs-qr { width: 150px; height: 150px; border-radius: 12px; }
+.hm-kv { display: grid; gap: 14px; }
+.hm-kv div { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+.hm-kv span { color: #71717a; font-size: 0.9rem; }
+.hm-kv b { color: #fff; }
+.hm-deliver { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #101012; color: #d4d4d8; font-size: 0.9rem; }
+.hm-deliver i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #4ade80; color: #000; font-style: normal; font-size: 0.8rem; font-weight: 800; }
+.hm-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.hm-kpis div { display: grid; gap: 4px; padding: 14px; border-radius: 14px; background: #101012; }
+.hm-kpis span { color: #71717a; font-size: 0.78rem; }
+.hm-kpis b { color: #fff; font-size: 1.3rem; letter-spacing: -0.03em; }
+.hm-bars { display: flex; align-items: flex-end; gap: 8px; height: 150px; }
+.hm-bars i { flex: 1; border-radius: 6px 6px 2px 2px; background: #e4e4e7; opacity: 0.9; }
+@media (max-width: 520px) { .hm-pixrow { grid-template-columns: 1fr; justify-items: center; } .hm-kv { width: 100%; } }
