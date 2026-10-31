@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
 import { Public } from "../ui/Shell";
-import { useApi } from "../ui/api";
+import { avatarUrl, useApi } from "../ui/api";
 
 // ───────────────────────── tipos e helpers ─────────────────────────
 
@@ -860,18 +860,56 @@ function useMensagemLogin() {
   }, []);
 }
 
+const DISCORD_ICON = <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="22" height="22" fill="currentColor"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.06.06 0 0 0-.031-.03ZM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z" /></svg>;
+
+const LOGIN_BENEFICIOS = [
+  { t: "Vendas e faturamento", d: "Resultado por período, com comparação e gráfico diário." },
+  { t: "Clientes e histórico", d: "Quem comprou, quanto gastou e o que levou." },
+  { t: "Controle do bot", d: "Ligue, reinicie e acompanhe a integração sem sair do navegador." },
+];
+const LOGIN_PERMISSOES = ["ID da sua conta", "Nome de usuário", "Foto de perfil"];
+
 export function Login() {
   const msg = useMensagemLogin();
+  const s = useSettings();
+  const me = useApi<{ discord_id: string; username?: string; global_name?: string | null; avatar?: string | null }>("/api/me");
   usePageTitle("Entrar");
+  const logado = !!me.data && !me.error;
+  const nome = me.data?.global_name || me.data?.username || "";
 
-  return <Public><div className="wrap"><div className="loginbox">
-    <h1 style={{ fontSize: "2.2rem" }}>Entrar</h1>
-    <p style={{ margin: "14px 0 24px" }}>
-      Use sua conta Discord para acessar o painel dos seus bots. Pedimos apenas a permissão de identificação: seu ID, nome e avatar.
-    </p>
-    {msg && <div className="state err" role="alert">{msg}</div>}
-    <a className="btn solid lg" href="/api/auth/discord">Entrar com Discord</a>
-  </div></div></Public>;
+  return <Public><section className="lg"><div className="wrap lg-grid">
+    <div className="lg-copy">
+      <span className="pill"><i aria-hidden="true" /> Painel do ZyraSallers</span>
+      <h1>Suas vendas, <em>num só lugar.</em></h1>
+      <p className="lead">Entre com o Discord para ver o faturamento, os clientes e o histórico de cada bot vinculado à sua conta.</p>
+      <ul className="lg-list">{LOGIN_BENEFICIOS.map((b) => <li key={b.t}>
+        <span className="lg-tick" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span>
+        <div><b>{b.t}</b><span>{b.d}</span></div></li>)}</ul>
+    </div>
+
+    <div className="lg-card">
+      <img className="lg-mark" src="/zyra.png" alt="" width={56} height={56} />
+      {logado ? <>
+        <h2>Bem-vindo de volta</h2>
+        <div className="lg-me"><img src={avatarUrl(me.data!.discord_id, me.data!.avatar)} alt="" width={44} height={44} /><div><b>{nome}</b><span>Sessão ativa neste aparelho</span></div></div>
+        {msg && <div className="state err" role="alert">{msg}</div>}
+        <a className="btn solid lg" href="/dashboard">Ir para o painel</a>
+        <a className="lg-alt" href="/api/auth/discord">Entrar com outra conta</a>
+      </> : <>
+        <h2>Acessar o painel</h2>
+        <p className="lg-sub">Entre com a conta do Discord que comprou o bot.</p>
+        {msg && <div className="state err" role="alert">{msg}</div>}
+        <a className="btn solid lg lg-discord" href="/api/auth/discord">{DISCORD_ICON} Entrar com Discord</a>
+        <div className="lg-perm"><b>O que pedimos ao Discord</b>
+          <ul>{LOGIN_PERMISSOES.map((x) => <li key={x}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>{x}</li>)}</ul>
+          <small>É só a permissão de identificação. Ela não dá acesso às suas mensagens, aos seus servidores nem aos seus amigos.</small></div>
+      </>}
+      <div className="lg-foot">
+        <span>Ainda não tem o bot? <ExternalLink className="lg-link" href={s.invite}>Adquirir ZyraSallers</ExternalLink></span>
+        <span>Ao entrar, você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</span>
+      </div>
+    </div>
+  </div></section></Public>;
 }
 
 // ───────────────────────── páginas legais ─────────────────────────
