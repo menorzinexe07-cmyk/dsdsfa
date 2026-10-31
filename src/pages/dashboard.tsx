@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { INVITE } from "../content";
 import { Dash } from "../ui/Shell";
 import { api, brl, dt, useApi, ApiError } from "../ui/api";
-import { Async, Avatar, Badge, BarChart, Empty, Kpi, LineChart, Pager } from "../ui/kit";
+import { Async, Avatar, Badge, Empty, Kpi, Pager, TrendChart } from "../ui/kit";
 
 const botHref = (id: string, tab = "visao-geral") => `/dashboard/bots/${encodeURIComponent(id)}/${tab}`;
 
@@ -28,17 +28,8 @@ export function DashboardHome() {
     <div className="kpis"><Kpi label="Bots vinculados" value={d.bots.length} />
       <Kpi label="Integrações ativas" value={d.bots.filter((b: any) => b.integration.status === "ativa").length} hint={`de ${d.bots.length}`} /></div>
     {d.bots.length === 1 && <a className="btn solid" href={botHref(d.bots[0].bot_id)}>Abrir painel de {d.bots[0].name}</a>}
-    {d.alerts.map((a: any, i: number) => <div key={i} className={`state ${a.level === "erro" ? "err" : ""}`}>{a.text}</div>)}
+    {d.alerts.map((a: any, i: number) => <div key={i} className={`state ${a.level === "erro" ? "err" : ""}`}>{a.text.replace(" suspended", " suspensa").replace(" expired", " expirada")}</div>)}
     <h2>Seus bots</h2><div className="grid3">{d.bots.map((b: any) => <BotCard key={b.bot_id} b={b} />)}</div>
-    <h2>Últimas vendas registradas</h2>
-    {d.recent_sales.length ? <div className="tablewrap"><table className="rt"><thead><tr><th>Data</th><th>Cliente</th><th>Produto</th><th className="num">Valor</th><th>Status</th></tr></thead>
-      <tbody>{d.recent_sales.map((s: any) => <tr key={s.bot_id + s.sale_id}><td className="nowrap" data-label="Data">{dt(s.sold_at)}</td><td data-label="Cliente">{s.customer_name ?? "—"}</td>
-        <td data-label="Produto">{s.product_name ?? "—"}</td><td className="num" data-label="Valor">{brl(s.amount_net ?? s.amount_gross)}</td><td data-label="Status"><Badge s={s.status} /></td></tr>)}</tbody></table></div>
-      : <Empty>Nenhuma venda registrada ainda.</Empty>}
-    <h2>Atividade recente</h2>
-    {d.activity.length ? <ul className="plain">{d.activity.map((e: any, i: number) =>
-      <li key={i}><span>Evento de {e.type === "sale" ? "venda" : "compra"}</span><span>{dt(e.received_at)} <Badge s={e.outcome === "error" ? "error" : "ok"} /></span></li>)}</ul>
-      : <Empty>Sem atividade recente.</Empty>}
   </>}</Async></Dash>;
 }
 
@@ -51,39 +42,123 @@ export function DashboardBots() {
 // ---------- Painel de um bot ----------
 const PERIODS: Record<string, number | null> = { "7": 7, "30": 30, "90": 90, all: null };
 
+const DAY = 864e5;
+const spDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); // AAAA-MM-DD no fuso de Brasília
+const addDays = (iso: string, n: number) => { const [y, m, d] = iso.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const R = (n: unknown) => brl(Number(n ?? 0));
+const ago = (s?: string | null) => { if (!s) return null; const m = Math.round((Date.now() - Date.parse(s)) / 60000);
+  if (m < 1) return "há instantes"; if (m < 60) return `há ${m} min`; const h = Math.round(m / 60); if (h < 24) return `há ${h} h`;
+  const d = Math.round(h / 24); return d === 1 ? "ontem" : `há ${d} dias`; };
+
+/** Completa os dias sem venda com zero: sem isso o gráfico escondia os dias parados e parecia ter mais vendas do que teve. */
+function fillDays(daily: any[], per: number | null) {
+  const map = new Map<string, any>(daily.map((d) => [String(d.day).slice(0, 10), d]));
+  const today = spDay(new Date());
+  let start = per ? addDays(today, -(per - 1)) : daily.length ? String(daily[0].day).slice(0, 10) : addDays(today, -29);
+  if (start < addDays(today, -365)) start = addDays(today, -365);
+  const out: { day: string; label: string; revenue: number; sales: number }[] = [];
+  for (let d = start; d <= today && out.length < 400; d = addDays(d, 1)) {
+    const r = map.get(d); out.push({ day: d, label: dm(d), revenue: Number(r?.revenue ?? 0), sales: Number(r?.sales ?? 0) });
+  }
+  return out;
+}
+
+function Delta({ cur, prev }: { cur: number; prev?: number }) {
+  if (prev === undefined || (!cur && !prev)) return null;
+  if (!prev) return <span className="delta up">Novo</span>;
+  const p = ((cur - prev) / prev) * 100;
+  if (Math.abs(p) < 0.5) return <span className="delta">Igual ao anterior</span>;
+  return <span className={`delta ${p > 0 ? "up" : "down"}`}>{p > 0 ? "▲" : "▼"} {Math.abs(p).toLocaleString("pt-BR", { maximumFractionDigits: p > 99 ? 0 : 1 })}%</span>;
+}
+
+const STATUS_PARTS: [string, string, string][] = [["approved", "Aprovadas", "#4ade80"], ["pending", "Pendentes", "#fbbf24"], ["canceled", "Canceladas", "#f87171"], ["refunded", "Reembolsadas", "#71717a"]];
+
 function Overview({ botId }: { botId: string }) {
   const [per, setPer] = useState("30");
-  const from = PERIODS[per] ? new Date(Date.now() - PERIODS[per]! * 864e5).toISOString() : "";
-  const q = useApi<any>(`/api/bots/${encodeURIComponent(botId)}/stats${from ? `?from=${encodeURIComponent(from)}` : ""}`);
+  const [mode, setMode] = useState<"revenue" | "sales" | "acc">("revenue");
+  const enc = encodeURIComponent(botId), n = PERIODS[per];
+  // datas calculadas só quando o período muda (antes mudavam a cada render e a tela recarregava sem parar)
+  const { curQ, prevQ } = useMemo(() => {
+    const now = Date.now();
+    return n ? { curQ: `?from=${encodeURIComponent(new Date(now - n * DAY).toISOString())}`,
+      prevQ: `?from=${encodeURIComponent(new Date(now - 2 * n * DAY).toISOString())}&to=${encodeURIComponent(new Date(now - n * DAY).toISOString())}` } : { curQ: "", prevQ: null };
+  }, [per]);
+  const q = useApi<any>(`/api/bots/${enc}/stats${curQ}`);
+  const pq = useApi<any>(prevQ === null ? null : `/api/bots/${enc}/stats${prevQ}`);
+  const recent = useApi<any>(`/api/bots/${enc}/sales?page=1&pageSize=6`);
+  const pv = prevQ === null ? undefined : pq.data; // período anterior (some quando "Tudo")
+  const label = per === "all" ? "todo o período" : `últimos ${n} dias`;
+
   return <>
-    <div className="row between"><h1>Visão geral</h1>
-      <select className="input w auto" value={per} onChange={(e) => setPer(e.target.value)}>
-        <option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="all">Todo o período</option></select></div>
-    <p className="muted">Receita, ticket médio e clientes consideram apenas vendas aprovadas.</p>
-    <Async q={q}>{(s) => { const daily = s.daily.map((d: any) => ({ label: d.day.slice(5), gross: Number(d.revenue ?? 0), sales: d.sales }));
-      let acc = 0; const evo = daily.map((d: any) => ({ label: d.label, value: (acc += d.gross) }));
-      const sc = s.status_counts ?? {};
+    <div className="row between"><div><h1>Visão geral</h1>
+      <p className="muted">{q.data?.last_sale ? `Última venda ${ago(q.data.last_sale)}.` : "Resultado do bot por período."} Receita, ticket e clientes contam só vendas aprovadas.</p></div>
+      <div className="seg" role="group" aria-label="Período">{[["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"], ["all", "Tudo"]].map(([k, l]) =>
+        <button key={k} className={per === k ? "on" : ""} aria-pressed={per === k} onClick={() => setPer(k)}>{l}</button>)}</div></div>
+
+    <Async q={q}>{(s) => {
+      const days = fillDays(s.daily ?? [], n);
+      let acc = 0;
+      const series = days.map((d) => ({ label: d.label, full: new Date(d.day + "T12:00:00Z").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" }),
+        value: mode === "sales" ? d.sales : mode === "acc" ? (acc += d.revenue) : d.revenue }));
+      const total = mode === "sales" ? s.sales : s.revenue;
+      const sc = s.status_counts ?? {}; const sTotal = STATUS_PARTS.reduce((t, [k]) => t + Number(sc[k] ?? 0), 0);
+      const topP = Math.max(...(s.top_products ?? []).map((p: any) => Number(p.revenue ?? 0)), 1);
+      const topC = Math.max(...(s.top_customers ?? []).map((c: any) => Number(c.revenue ?? 0)), 1);
+      if (!Number(s.all?.sales) && !sTotal) return <div className="empty card"><h2>Ainda não há vendas neste bot</h2>
+        <p>Assim que o Bot Manager enviar a primeira venda aprovada, o faturamento, os gráficos e os rankings aparecem aqui.</p>
+        <a className="btn" href={botHref(botId, "configuracoes")}>Ver configurações do bot</a></div>;
       return <>
-        <div className="kpis">
-          <Kpi label="Faturamento" value={brl(s.revenue)} hint="Líquido enviado (ou bruto, se não houver líquido)" />
-          <Kpi label="Vendas" value={s.sales} /><Kpi label="Ticket médio" value={brl(s.avg_ticket)} />
-          <Kpi label="Clientes únicos" value={s.unique_customers} /></div>
-        <div className="kpis compact">
-          <Kpi label="Última venda" value={dt(s.last_sale)} />
-          <Kpi label="Bruto informado" value={brl(s.gross)} /><Kpi label="Líquido informado" value={brl(s.net)} />
-          <Kpi label="Hoje" value={brl(s.today.revenue)} hint={`${s.today.sales} vendas`} /><Kpi label="Últimos 7 dias" value={brl(s.last7.revenue)} hint={`${s.last7.sales} vendas`} />
-          <Kpi label="Últimos 30 dias" value={brl(s.last30.revenue)} hint={`${s.last30.sales} vendas`} /><Kpi label="Todo o período" value={brl(s.all.revenue)} hint={`${s.all.sales} vendas`} /></div>
+        <div className="kpis four">
+          <Kpi label="Faturamento" value={R(s.revenue)} hint={s.gross != null ? `Bruto ${R(s.gross)}` : undefined} extra={<Delta cur={Number(s.revenue ?? 0)} prev={pv ? Number(pv.revenue ?? 0) : undefined} />} />
+          <Kpi label="Vendas aprovadas" value={s.sales ?? 0} extra={<Delta cur={Number(s.sales ?? 0)} prev={pv ? Number(pv.sales ?? 0) : undefined} />} />
+          <Kpi label="Ticket médio" value={R(s.avg_ticket)} extra={<Delta cur={Number(s.avg_ticket ?? 0)} prev={pv ? Number(pv.avg_ticket ?? 0) : undefined} />} />
+          <Kpi label="Clientes únicos" value={s.unique_customers ?? 0} extra={<Delta cur={Number(s.unique_customers ?? 0)} prev={pv ? Number(pv.unique_customers ?? 0) : undefined} />} /></div>
+        {per !== "all" && <p className="muted vs">As variações comparam com os {n} dias anteriores.</p>}
+
+        <div className="ov-main">
+          <div className="card">
+            <div className="row between"><div><span className="cap">{mode === "sales" ? "Vendas" : mode === "acc" ? "Faturamento acumulado" : "Faturamento"} · {label}</span>
+              <div className="bignum">{mode === "sales" ? (total ?? 0) : mode === "acc" ? R(acc) : R(total)}</div></div>
+              <div className="seg sm" role="group" aria-label="Métrica do gráfico">{([["revenue", "Faturamento"], ["sales", "Vendas"], ["acc", "Acumulado"]] as const).map(([k, l]) =>
+                <button key={k} className={mode === k ? "on" : ""} aria-pressed={mode === k} onClick={() => setMode(k)}>{l}</button>)}</div></div>
+            <TrendChart data={series} fmt={mode === "sales" ? (v) => `${v} ${v === 1 ? "venda" : "vendas"}` : brl}
+              yfmt={mode === "sales" ? undefined : (v) => `R$ ${v >= 1000 ? `${+(v / 1000).toFixed(1)}k` : v}`} />
+          </div>
+          <div className="ov-side">
+            <div className="card"><h3>Ritmo atual</h3>
+              <ul className="plain">
+                <li><span>Hoje</span><b>{R(s.today?.revenue)} <small>({s.today?.sales ?? 0})</small></b></li>
+                <li><span>Últimos 7 dias</span><b>{R(s.last7?.revenue)} <small>({s.last7?.sales ?? 0})</small></b></li>
+                <li><span>Últimos 30 dias</span><b>{R(s.last30?.revenue)} <small>({s.last30?.sales ?? 0})</small></b></li>
+                <li><span>Desde o início</span><b>{R(s.all?.revenue)} <small>({s.all?.sales ?? 0})</small></b></li></ul></div>
+            <div className="card"><h3>Status das vendas</h3>
+              {sTotal ? <>
+                <div className="statusbar" role="img" aria-label="Distribuição das vendas por status">{STATUS_PARTS.filter(([k]) => Number(sc[k])).map(([k, l, c]) => <i key={k} title={`${l}: ${sc[k]}`} style={{ flex: Number(sc[k]), background: c }} />)}</div>
+                <ul className="legend">{STATUS_PARTS.map(([k, l, c]) => <li key={k}><i style={{ background: c }} /><span>{l}</span><b>{sc[k] ?? 0}</b>
+                  <small>{sTotal ? Math.round((Number(sc[k] ?? 0) / sTotal) * 100) : 0}%</small></li>)}</ul></> : <Empty>Nenhuma venda no período.</Empty>}</div>
+          </div></div>
+
         <div className="grid2">
-          <div className="card"><h3>Faturamento por dia</h3><BarChart data={daily.map((d: any) => ({ label: d.label, value: d.gross }))} fmt={brl} /></div>
-          <div className="card"><h3>Vendas por dia</h3><BarChart data={daily.map((d: any) => ({ label: d.label, value: d.sales }))} /></div>
-          <div className="card"><h3>Evolução do faturamento</h3><LineChart data={evo} fmt={brl} /></div>
-          <div className="card"><h3>Status das vendas no período</h3>
-            <ul className="plain"><li>Aprovadas <b>{sc.approved ?? 0}</b></li><li>Pendentes <b>{sc.pending ?? 0}</b></li><li>Canceladas <b>{sc.canceled ?? 0}</b></li><li>Reembolsadas <b>{sc.refunded ?? 0}</b></li></ul></div>
-          <div className="card"><h3>Produtos mais vendidos</h3>{s.top_products.length ? <ul className="plain">{s.top_products.map((p: any) =>
-            <li key={p.name}><span>{p.name}</span><b>{brl(p.revenue)} <small>({p.sales} {p.sales === 1 ? "venda" : "vendas"})</small></b></li>)}</ul> : <Empty>Nenhum produto enviado pela integração.</Empty>}</div>
-          <div className="card"><h3>Clientes que mais compraram</h3>{s.top_customers.length ? <ul className="plain">{s.top_customers.map((c: any) =>
-            <li key={c.discord_id}><span className="whois"><Avatar src={c.icon} name={c.name} /> {c.name ?? c.discord_id}</span><b>{brl(c.revenue)} <small>({c.purchases} {c.purchases === 1 ? "compra" : "compras"})</small></b></li>)}</ul> : <Empty>Sem clientes identificados.</Empty>}</div>
-        </div></>; }}</Async></>;
+          <div className="card"><h3>Produtos mais vendidos</h3>
+            {s.top_products?.length ? <ul className="ranks">{s.top_products.map((p: any) => <li key={p.name}>
+              <div><span>{p.name}</span><b>{R(p.revenue)}</b></div>
+              <div className="rtrack"><i style={{ width: `${Math.max(4, (Number(p.revenue ?? 0) / topP) * 100)}%` }} /></div>
+              <small>{p.sales} {p.sales === 1 ? "venda" : "vendas"}</small></li>)}</ul> : <Empty>Nenhum produto enviado pela integração.</Empty>}</div>
+          <div className="card"><h3>Clientes que mais compraram</h3>
+            {s.top_customers?.length ? <ul className="ranks">{s.top_customers.map((c: any) => <li key={c.discord_id}>
+              <div><span className="whois"><Avatar src={c.icon} name={c.name} size={24} /> {c.name ?? c.discord_id}</span><b>{R(c.revenue)}</b></div>
+              <div className="rtrack"><i style={{ width: `${Math.max(4, (Number(c.revenue ?? 0) / topC) * 100)}%` }} /></div>
+              <small>{c.purchases} {c.purchases === 1 ? "compra" : "compras"}</small></li>)}</ul> : <Empty>Sem clientes identificados.</Empty>}</div></div>
+
+        <div className="row between" style={{ marginTop: 32 }}><h2 style={{ margin: 0 }}>Vendas recentes</h2><a className="btn sm" href={botHref(botId, "vendas")}>Ver todas</a></div>
+        {recent.data?.items?.length ? <div className="tablewrap"><table className="rt"><thead><tr><th>Data</th><th>Cliente</th><th>Produto</th><th className="num">Valor</th><th>Status</th></tr></thead>
+          <tbody>{recent.data.items.map((x: any) => <tr key={x.sale_id}><td className="nowrap" data-label="Data">{dt(x.sold_at)}</td>
+            <td data-label="Cliente"><span className="whois"><Avatar src={x.customer_icon} name={x.customer_name} size={24} /> {x.customer_name ?? "—"}</span></td>
+            <td className="clip" data-label="Produto">{x.product_name ?? "—"}</td><td className="num" data-label="Valor">{brl(x.amount_net ?? x.amount_gross)}</td>
+            <td data-label="Status"><Badge s={x.status} /></td></tr>)}</tbody></table></div>
+          : <div style={{ marginTop: 14 }}><Empty>{recent.loading ? "Carregando vendas…" : "Nenhuma venda registrada ainda."}</Empty></div>}
+      </>; }}</Async></>;
 }
 
 function Sales({ botId }: { botId: string }) {
