@@ -4,7 +4,16 @@ import { INVITE } from "../content";
 import { Async } from "./kit";
 import { Intro } from "./Intro";
 
-export const Logo = () => <a href="/" className="logo"><span>Z</span>Zyra Apps</a>;
+export const Logo = () => <a href="/" className="logo"><img src="/zyra.png" alt="" width={30} height={30} />Zyra Apps</a>;
+
+/** Ícone da aba do navegador (usa o ícone do servidor em /public/zyra.png). */
+function useFavicon() {
+  useEffect(() => {
+    let l = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (!l) { l = document.createElement("link"); l.rel = "icon"; document.head.appendChild(l); }
+    l.type = "image/png"; l.href = "/zyra.png";
+  }, []);
+}
 
 /** Efeitos do site público: spotlight que segue o mouse e entrada suave ao rolar. */
 function useSiteEffects() {
@@ -33,6 +42,7 @@ function useSiteEffects() {
 export function Public({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   useSiteEffects();
+  useFavicon();
   return <div className="site">
     <Intro />
     <header className="nav"><div className="wrap">
@@ -66,13 +76,14 @@ export function Public({ children }: { children: ReactNode }) {
 export function PageLoader() {
   return <div className="pageloader" role="status" aria-live="polite" aria-label="Carregando">
     <div className="pl-bar" />
-    <div className="pl-mark"><span>Z</span></div>
+    <div className="pl-mark"><img src="/zyra.png" alt="" width={52} height={52} /></div>
     <p>Carregando…</p>
   </div>;
 }
 
 export function Dash({ children, bot }: { children: ReactNode; bot?: { id: string; name?: string } }) {
   const me = useApi<any>("/api/me");
+  useFavicon();
   const [leaving, setLeaving] = useState(false);
   useEffect(() => { // mostra o loading assim que o usuário clica num link interno
     let t: ReturnType<typeof setTimeout> | undefined;
