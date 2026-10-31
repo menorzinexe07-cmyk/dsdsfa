@@ -1,0 +1,182 @@
+/* ZyraSallers: tema visual das páginas públicas.
+   Preto puro, grade de pontos, bordas finas, botões em pílula. Sem gradientes nem brilhos.
+   O prefixo "body" aumenta a força dos seletores para vencer o CSS antigo, sem !important. */
+
+:root {
+  --t-bg: #000;
+  --t-panel: #0a0a0b;
+  --t-panel2: #101012;
+  --t-line: rgba(255, 255, 255, 0.09);
+  --t-line2: rgba(255, 255, 255, 0.16);
+  --t-tx: #f4f4f5;
+  --t-mut: #a1a1aa;
+  --t-dim: #71717a;
+  --t-font: "Inter", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--t-bg);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  background-attachment: fixed;
+  color: var(--t-mut);
+  font-family: var(--t-font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body h1, body h2, body h3 {
+  font-family: var(--t-font);
+  color: var(--t-tx);
+  letter-spacing: -0.035em;
+  line-height: 1.04;
+  font-weight: 700;
+}
+body h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); }
+body h2 { font-size: clamp(1.9rem, 3.6vw, 2.9rem); }
+body h3 { font-size: 1.15rem; letter-spacing: -0.02em; line-height: 1.2; }
+body h1 em { font-style: normal; color: var(--t-dim); }
+body p, body li { line-height: 1.65; }
+body a { color: var(--t-tx); text-underline-offset: 3px; }
+
+/* ───── layout ───── */
+body .sec { padding-block: clamp(64px, 9vw, 120px); background: none; }
+body .sec.tight { padding-block: clamp(32px, 5vw, 64px); }
+body .sec.rule { border-top: 1px solid var(--t-line); }
+body .sec-head { max-width: 640px; margin-bottom: clamp(32px, 5vw, 56px); }
+body .sec-head p { margin-top: 14px; font-size: 1.05rem; color: var(--t-mut); }
+
+/* ───── botões ───── */
+body .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 22px; border-radius: 999px;
+  border: 1px solid var(--t-line2); background: transparent; color: var(--t-tx);
+  font: 600 0.95rem var(--t-font); text-decoration: none; box-shadow: none;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+body .btn:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.3); }
+body .btn:active { transform: scale(0.98); }
+body .btn.lg { height: 52px; padding: 0 28px; font-size: 1rem; }
+body .btn.solid, body .btn.ink { background: #fff; color: #000; border-color: #fff; }
+body .btn.solid:hover, body .btn.ink:hover { background: #e4e4e7; border-color: #e4e4e7; }
+
+/* ───── hero ───── */
+body .hero { padding-block: clamp(56px, 8vw, 110px) clamp(40px, 6vw, 80px); background: none; }
+body .hero .wrap {
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 72px); align-items: center;
+}
+body .hero .lead { margin-top: 22px; max-width: 46ch; font-size: 1.12rem; color: var(--t-mut); }
+body .hero h1 { margin-top: 18px; }
+body .hero .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+body .hero small { display: block; margin-top: 22px; color: var(--t-dim); font-size: 0.9rem; }
+body .hero small b { color: var(--t-tx); }
+body .pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none;
+  color: var(--t-mut); font-size: 0.9rem; letter-spacing: 0;
+}
+body .pill i { width: 6px; height: 6px; border-radius: 50%; background: #fff; display: inline-block; }
+@media (max-width: 900px) { body .hero .wrap { grid-template-columns: 1fr; } }
+
+/* ───── faixa de funcionalidades ───── */
+body .marquee { border-block: 1px solid var(--t-line); padding-block: 16px; background: none; }
+body .marquee .chip { background: none; border: 1px solid var(--t-line); color: var(--t-mut); }
+
+/* ───── chips ───── */
+body .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+body .chip {
+  display: inline-flex; align-items: center; padding: 6px 13px; border-radius: 999px;
+  border: 1px solid var(--t-line); background: rgba(255, 255, 255, 0.03);
+  color: var(--t-mut); font-size: 0.84rem; box-shadow: none;
+}
+
+/* ───── cards de funcionalidades ───── */
+body .bento { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
+body .cell {
+  grid-column: span 2; display: flex; flex-direction: column; gap: 12px;
+  padding: 26px; border-radius: 20px; border: 1px solid var(--t-line);
+  background: var(--t-panel); box-shadow: none; transition: border-color 0.2s, background 0.2s;
+}
+body .cell.s4 { grid-column: span 4; }
+body .cell.s6 { grid-column: span 6; }
+body .cell:hover { border-color: var(--t-line2); background: var(--t-panel2); }
+body .cell::before, body .cell::after, body .spot::before, body .spot::after { display: none; }
+body .cell p { color: var(--t-mut); font-size: 0.95rem; }
+body .cell .chips { margin-top: auto; padding-top: 8px; }
+body .ico {
+  width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px;
+  border: 1px solid var(--t-line2); background: #000; color: #fff;
+}
+body .ico svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 800px) { body .bento { grid-template-columns: 1fr; } body .cell, body .cell.s4, body .cell.s6 { grid-column: auto; } }
+
+/* ───── pagamentos ───── */
+body .glist { display: grid; border: 1px solid var(--t-line); border-radius: 20px; overflow: hidden; background: var(--t-panel); }
+body .grow {
+  display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); gap: 20px;
+  align-items: center; padding: 24px 28px; border-top: 1px solid var(--t-line);
+}
+body .grow:first-child { border-top: 0; }
+body .grow small { display: block; margin-top: 4px; color: var(--t-dim); }
+@media (max-width: 720px) { body .grow { grid-template-columns: 1fr; } }
+
+/* ───── passos ───── */
+body .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; counter-reset: passo; }
+body .step {
+  counter-increment: passo; padding: 28px; border-radius: 20px; border: 1px solid var(--t-line);
+  background: var(--t-panel); box-shadow: none;
+}
+body .step::before {
+  content: "0" counter(passo); display: block; margin-bottom: 40px;
+  font: 600 0.85rem var(--t-font); color: var(--t-dim); letter-spacing: 0.08em;
+}
+body .step p { margin-top: 8px; color: var(--t-mut); font-size: 0.95rem; }
+@media (max-width: 800px) { body .steps { grid-template-columns: 1fr; } }
+
+/* ───── preço ───── */
+body .pricebox {
+  display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center;
+  padding: clamp(28px, 4vw, 48px); border-radius: 24px; border: 1px solid var(--t-line2);
+  background: var(--t-panel); color: var(--t-mut); box-shadow: none;
+}
+body .pricebox h2 { color: var(--t-tx); font-size: 1.2rem; letter-spacing: -0.01em; }
+body .pricebox .big { margin-top: 10px; font-size: clamp(2.4rem, 5vw, 3.6rem); font-weight: 700; letter-spacing: -0.04em; color: #fff; }
+body .pricebox .side { display: grid; gap: 10px; }
+body .pricebox .btn.ink { background: #fff; color: #000; }
+body .pricebox .btn:not(.ink) { color: var(--t-tx) !important; border-color: var(--t-line2) !important; }
+@media (max-width: 720px) { body .pricebox { grid-template-columns: 1fr; } }
+
+/* ───── FAQ ───── */
+body .faqlist { display: grid; gap: 10px; }
+body .faq { border: 1px solid var(--t-line); border-radius: 16px; background: var(--t-panel); padding: 0; overflow: hidden; }
+body .faq summary {
+  list-style: none; cursor: pointer; padding: 20px 24px; color: var(--t-tx); font-weight: 600;
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+}
+body .faq summary::-webkit-details-marker { display: none; }
+body .faq summary::after { content: "+"; font-size: 1.4rem; font-weight: 400; color: var(--t-dim); transition: transform 0.2s; }
+body .faq[open] summary::after { transform: rotate(45deg); }
+body .faq p { padding: 0 24px 22px; color: var(--t-mut); }
+body .faq:hover { border-color: var(--t-line2); }
+body .input {
+  width: 100%; height: 48px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--t-line2);
+  background: var(--t-panel); color: var(--t-tx); font: inherit; margin-bottom: 8px;
+}
+body .input:focus { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* ───── chamada final, cabeçalho de página, login, legal ───── */
+body .cta { padding-block: clamp(72px, 10vw, 130px); text-align: center; border-top: 1px solid var(--t-line); background: none; }
+body .cta .wrap { display: grid; justify-items: center; gap: 28px; }
+body .pagehead { padding-block: clamp(56px, 8vw, 100px) 20px; background: none; }
+body .pagehead p { margin-top: 16px; max-width: 56ch; font-size: 1.08rem; }
+body .loginbox {
+  max-width: 460px; margin: clamp(56px, 10vw, 120px) auto; padding: 36px; text-align: center;
+  border-radius: 24px; border: 1px solid var(--t-line); background: var(--t-panel);
+}
+body .state { padding: 14px 18px; border-radius: 14px; border: 1px solid var(--t-line2); background: var(--t-panel); color: var(--t-mut); margin-bottom: 20px; font-size: 0.92rem; }
+body .state.err { border-color: rgba(248, 113, 113, 0.5); color: #fca5a5; }
+body .legal h3 { margin-top: 32px; }
+body .legal p { margin-top: 10px; }
+body .muted { color: var(--t-dim); }
+
+@media (prefers-reduced-motion: reduce) { body * { transition: none !important; animation: none !important; } }
