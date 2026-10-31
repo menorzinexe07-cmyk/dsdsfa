@@ -541,32 +541,38 @@ const PageHead = ({ title, children, narrow }: { title: string; children?: React
 // ───────────────────────── mockups da Home (dados fictícios, sempre marcados como exemplo) ─────────────────────────
 
 const BARRAS_EXEMPLO = [32, 46, 38, 62, 52, 78, 70, 92];
-const VENDAS_EXEMPLO = [
-  { n: "Marina", p: "Plano Mensal", v: "R$ 5,00", t: "agora" },
-  { n: "Lucas", p: "Plano Mensal", v: "R$ 5,00", t: "há 12 min" },
-  { n: "Ana", p: "Clone de servidor", v: "R$ 5,00", t: "há 41 min" },
-  { n: "Rafael", p: "Plano Mensal", v: "R$ 5,00", t: "há 2 h" },
+const POOL_VENDAS = [
+  { n: "Marina", p: "Plano Mensal" }, { n: "Lucas", p: "Clone de servidor" }, { n: "Ana", p: "Plano Mensal" },
+  { n: "Rafael", p: "Plano Mensal" }, { n: "Bia", p: "Clone de servidor" }, { n: "Caio", p: "Plano Mensal" },
 ];
 
-function PhoneMock() {
-  return <div className="hm-phone-wrap" data-reveal>
-    <div className="hm-phone" role="img" aria-label="Exemplo demonstrativo de notificação de venda no celular">
-      <i className="hm-notch" />
-      <div className="hm-screen">
-        <div className="hm-notif"><img className="hm-ic" src="/zyra.png" alt="" />
-          <div><b>ZyraSallers</b><p>Venda aprovada: R$ 5,00</p></div><time>agora</time></div>
-        <div className="hm-balance"><small>Saldo disponível</small><strong>R$ 1.240,00</strong></div>
-        <div className="hm-listh">Últimas vendas</div>
-        <ul className="hm-sales">
-          {VENDAS_EXEMPLO.map((v) => <li key={v.n}>
-            <span className="hm-av">{v.n[0]}</span>
-            <div><b>{v.n}</b><small>{v.p} · {v.t}</small></div>
-            <em>{v.v}</em>
-          </li>)}
-        </ul>
-      </div>
-    </div>
-    <span className="hm-fake">Exemplo com dados fictícios</span>
+/** Vendas de exemplo chegando uma a uma: o único movimento contínuo do topo da Home. */
+function SalesFeed() {
+  const [tick, setTick] = useState(3);
+  useEffect(() => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const iv = setInterval(() => setTick((t) => t + 1), 3200);
+    return () => clearInterval(iv);
+  }, []);
+  const n = POOL_VENDAS.length;
+  const itens = [0, 1, 2, 3].map((r) => ({ id: tick - r, rank: r, ...POOL_VENDAS[(((tick - r) % n) + n) % n] }));
+  return <div className="hm-float hm-feed" role="img" aria-label="Exemplo demonstrativo de vendas chegando ao vivo">
+    <div className="hm-feed-head"><i className="hm-live" /><b>Vendas ao vivo</b><span>Exemplo</span></div>
+    <ul>
+      {itens.map((v) => <li key={v.id} style={vars({ "--r": v.rank })}>
+        <span className="hm-av">{v.n[0]}</span>
+        <div><b>{v.n}</b><small>{v.p}</small></div>
+        <em>{brl(5)}</em>
+      </li>)}
+    </ul>
+  </div>;
+}
+
+function MiniDash() {
+  return <div className="hm-float hm-mini" role="img" aria-label="Exemplo demonstrativo do saldo e das vendas">
+    <div className="hm-feed-head"><b>Saldo disponível</b><span>Exemplo</span></div>
+    <strong>R$ 1.240,00</strong>
+    <div className="hm-bars sm">{BARRAS_EXEMPLO.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div>
   </div>;
 }
 
@@ -599,15 +605,15 @@ function DashMock() {
   </div>;
 }
 
-function Bloco({ tag, titulo, texto, itens, reverse, children }: {
-  tag: string; titulo: string; texto: string; itens: string[]; reverse?: boolean; children: ReactNode;
+function Bloco({ id, titulo, texto, itens, reverse, extra, children }: {
+  id?: string; titulo: string; texto: string; itens: string[]; reverse?: boolean; extra?: ReactNode; children: ReactNode;
 }) {
-  return <div className={`hm-row${reverse ? " rev" : ""}`} data-reveal>
+  return <div className={`hm-row${reverse ? " rev" : ""}`} id={id} data-reveal>
     <div className="hm-copy">
-      <span className="hm-tag">{tag}</span>
       <h3>{titulo}</h3>
       <p>{texto}</p>
       <ul>{itens.map((i) => <li key={i}>{i}</li>)}</ul>
+      {extra}
     </div>
     <div className="hm-show">{children}</div>
   </div>;
@@ -641,7 +647,11 @@ export function Home() {
         <li><b>{recursos} recursos</b><span>para vender e administrar</span></li>
         <li><b>{GATEWAYS.length} modos</b><span>de receber pagamentos</span></li>
       </ul>
-      <PhoneMock />
+      <div className="hm-stage"><div className="hm-stage-in">
+        <SalesFeed />
+        <DemoPainel />
+        <MiniDash />
+      </div></div>
     </div></section>
 
     <Marquee />
@@ -652,19 +662,14 @@ export function Home() {
         <p>Pedidos, pagamentos, clientes e administração em um único bot, direto no seu servidor Discord.</p>
       </div>
 
-      <Bloco tag="01 · Loja e vendas" titulo="Uma loja dentro do seu servidor"
-        texto="O cliente escolhe o produto, abre o carrinho e paga sem sair do Discord. Teste ao lado, do jeito que ele vê."
-        itens={["Painel de produto com botão de compra", "Carrinho aberto na hora", "Entrega depois da aprovação do pagamento"]}>
-        <DemoPainel />
-      </Bloco>
-
-      <Bloco reverse tag="02 · Pagamentos" titulo="Receba pelo método que você já usa"
-        texto="Gateways automáticos, integração via IMAP e modo manual. O pedido é confirmado e entregue sem você precisar abrir nada."
-        itens={["Pix com QR Code e copia e cola", "Confirmação automática nos gateways compatíveis", "Modo manual para quem prefere conferir"]}>
+      <Bloco id="pagamentos" titulo="Receba pelo método que você já usa"
+        texto="O cliente paga sem sair do Discord, o pedido é confirmado e a entrega acontece sem você precisar abrir nada."
+        itens={["Pix com QR Code e copia e cola", "Confirmação automática nos gateways compatíveis", "Modo manual para quem prefere conferir"]}
+        extra={<div className="hm-gw">{GATEWAYS.map((g) => <div key={g.title}><small>{g.title}</small><Chips items={g.items} /></div>)}</div>}>
         <PixMock />
       </Bloco>
 
-      <Bloco tag="03 · Dashboard" titulo="Acompanhe tudo em um só lugar"
+      <Bloco reverse titulo="Acompanhe tudo em um só lugar"
         texto="Entre com o Discord e veja estatísticas, clientes e o histórico de vendas de cada bot."
         itens={["Faturamento e número de vendas", "Lista de clientes e pedidos", "Um painel para cada bot vinculado à sua conta"]}>
         <DashMock />
@@ -679,18 +684,10 @@ export function Home() {
       <Features />
     </div></section>
 
-    <section className="sec rule" id="pagamentos"><div className="wrap">
-      <div className="sec-head center" data-reveal>
-        <h2>Bancos e gateways de pagamento</h2>
-        <p>Gateways automáticos, integração via IMAP e modo manual.</p>
-      </div>
-      <Gateways />
-    </div></section>
-
     <section className="sec rule"><div className="wrap">
       <div className="sec-head center" data-reveal><h2>Do servidor ao painel em três passos</h2></div>
       <div className="steps">
-        {PASSOS.map((p, i) => <div key={p.t} data-reveal className={`step spot${i ? ` d${i}` : ""}`}>
+        {PASSOS.map((p, i) => <div key={p.t} data-reveal className={`step${i ? ` d${i}` : ""}`}>
           <h3>{p.t}</h3><p>{p.d}</p>
         </div>)}
       </div>
@@ -698,10 +695,16 @@ export function Home() {
 
     <section className="sec tight"><div className="wrap"><PriceBox price={s.price} invite={s.invite} /></div></section>
 
-    <section className="sec rule"><div className="wrap narrow">
-      <div className="sec-head center" data-reveal><h2>Antes de começar</h2><p>As dúvidas mais comuns sobre o ZyraSallers.</p></div>
-      <FaqList items={faqResumo} numbered />
-      <p style={{ marginTop: 24, textAlign: "center" }}><a href="/faq">Ver todas as perguntas</a></p>
+    <section className="sec rule"><div className="wrap hm-faq">
+      <div className="hm-faq-side" data-reveal>
+        <h2>Antes de começar</h2>
+        <p>As dúvidas mais comuns sobre o ZyraSallers. Não achou a sua? Pergunte no servidor.</p>
+        <div className="actions">
+          <ExternalLink className="btn lg" href={s.invite}>Entrar no Discord</ExternalLink>
+          <a className="btn lg" href="/faq">Ver todas</a>
+        </div>
+      </div>
+      <FaqList items={faqResumo} />
     </div></section>
 
     <section className="cta"><div className="wrap">
