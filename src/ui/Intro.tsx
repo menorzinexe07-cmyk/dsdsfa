@@ -55,6 +55,11 @@ export function Intro() {
     return () => window.removeEventListener("keydown", k);
   }, [fase]);
 
+  // avisa o resto do site que a cortina começou a subir (a Home reinicia as animações do topo)
+  useEffect(() => {
+    if (fase === "out") window.dispatchEvent(new Event("zs-intro-fim"));
+  }, [fase]);
+
   if (fase === "off") return null;
 
   return (
