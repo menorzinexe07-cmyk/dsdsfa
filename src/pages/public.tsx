@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
 import { Public } from "../ui/Shell";
 import { useApi } from "../ui/api";
@@ -275,7 +275,7 @@ function DemoPainel() {
 
   return (
     <>
-      <style>{DEMO_CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: DEMO_CSS }} />
           <div className="zs-janela">
             <div className="zs-janela-topo">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16" /></svg>
@@ -619,6 +619,55 @@ function Bloco({ id, titulo, texto, itens, reverse, extra, children }: {
   </div>;
 }
 
+// ───────────────────────── animações do topo da Home ─────────────────────────
+
+/** Título entrando palavra por palavra (cada palavra sobe de dentro de uma "máscara"). */
+function Palavras({ texto, inicio = 0 }: { texto: string; inicio?: number }) {
+  return <>{texto.split(" ").map((w, i) =>
+    <Fragment key={i}><span className="w"><span style={{ animationDelay: `${0.15 + (inicio + i) * 0.07}s` }}>{w}</span></span>{" "}</Fragment>)}</>;
+}
+
+/** Número que conta de 0 até o valor. Sem JS ou com "reduzir movimento", mostra o valor final. */
+function CountUp({ to, ms = 1100, atraso = 800 }: { to: number; ms?: number; atraso?: number }) {
+  const [v, setV] = useState(to);
+  useEffect(() => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let raf = 0, t0 = 0;
+    setV(0);
+    const t = setTimeout(() => {
+      const passo = (ts: number) => {
+        if (!t0) t0 = ts;
+        const k = Math.min(1, (ts - t0) / ms);
+        setV(Math.round(to * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) raf = requestAnimationFrame(passo);
+      };
+      raf = requestAnimationFrame(passo);
+    }, atraso);
+    return () => { clearTimeout(t); cancelAnimationFrame(raf); };
+  }, [to, ms, atraso]);
+  return <>{v}</>;
+}
+
+/** O painel entra inclinado em 3D e se endireita conforme a página rola. */
+function useInclinar() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let raf = 0;
+    const aplicar = () => {
+      raf = 0;
+      const p = Math.min(1, window.scrollY / 460);
+      el.style.transform = p >= 1 ? "none" : `perspective(1600px) rotateX(${((1 - p) * 14).toFixed(2)}deg) translateY(${((1 - p) * 28).toFixed(1)}px)`;
+    };
+    const agendar = () => { if (!raf) raf = requestAnimationFrame(aplicar); };
+    aplicar();
+    window.addEventListener("scroll", agendar, { passive: true });
+    return () => { window.removeEventListener("scroll", agendar); cancelAnimationFrame(raf); el.style.transform = ""; };
+  }, []);
+  return ref;
+}
+
 // ───────────────────────── páginas ─────────────────────────
 
 const PASSOS = [
@@ -632,22 +681,34 @@ export function Home() {
   usePageTitle("Venda pelo Discord");
   const faqResumo = useMemo(() => s.faq.slice(0, 6), [s.faq]);
   const recursos = useMemo(() => FEATURES.reduce((a, f) => a + f.items.length, 0), []);
+  const inclinar = useInclinar();
+  // na primeira visita a animação de entrada cobre o topo: quando a cortina sobe, as animações do topo recomeçam
+  const [rodada, setRodada] = useState(0);
+  useEffect(() => {
+    const f = () => setRodada((r) => r + 1);
+    window.addEventListener("zs-intro-fim", f);
+    return () => window.removeEventListener("zs-intro-fim", f);
+  }, []);
 
   return <Public>
     <section className="hm-hero"><div className="wrap">
-      <span className="pill"><i aria-hidden="true" /> Bot brasileiro de vendas para Discord</span>
-      <h1>{s.title ?? <>Venda pelo Discord, <em>no automático.</em></>}</h1>
-      <p className="lead">{s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}</p>
-      <div className="actions">
-        <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
-        <a className="btn lg" href="#recursos">Ver recursos</a>
+      <div className="hm-intro" key={rodada}>
+        <span className="pill" style={vars({ "--d": 0.05 })}><i aria-hidden="true" /> Bot brasileiro de vendas para Discord</span>
+        <h1>{s.title
+          ? <Palavras texto={s.title} />
+          : <><Palavras texto="Venda pelo Discord," /><em><Palavras texto="no automático." inicio={3} /></em></>}</h1>
+        <p className="lead" style={vars({ "--d": 0.6 })}>{s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}</p>
+        <div className="actions" style={vars({ "--d": 0.75 })}>
+          <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
+          <a className="btn lg" href="#recursos">Ver recursos</a>
+        </div>
+        <ul className="hm-stats" style={vars({ "--d": 0.9 })}>
+          <li><b>{s.price}</b><span>preço informado</span></li>
+          <li><b><CountUp to={recursos} /> recursos</b><span>para vender e administrar</span></li>
+          <li><b><CountUp to={GATEWAYS.length} /> modos</b><span>de receber pagamentos</span></li>
+        </ul>
       </div>
-      <ul className="hm-stats">
-        <li><b>{s.price}</b><span>preço informado</span></li>
-        <li><b>{recursos} recursos</b><span>para vender e administrar</span></li>
-        <li><b>{GATEWAYS.length} modos</b><span>de receber pagamentos</span></li>
-      </ul>
-      <div className="hm-stage"><div className="hm-stage-in">
+      <div className="hm-stage"><div className="hm-stage-in" ref={inclinar}>
         <SalesFeed />
         <DemoPainel />
         <MiniDash />
@@ -676,7 +737,7 @@ export function Home() {
       </Bloco>
     </div></section>
 
-    <section className="sec rule"><div className="wrap">
+    <section className="sec rule band"><div className="wrap">
       <div className="sec-head center" data-reveal>
         <h2>Também incluído</h2>
         <p>Tudo que o seu servidor precisa para vender, divulgar e se manter organizado.</p>
