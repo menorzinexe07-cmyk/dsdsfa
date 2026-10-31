@@ -26,6 +26,9 @@ function useSiteEffects() {
       el.style.setProperty("--my", `${e.clientY - r.top}px`);
     };
     document.addEventListener("pointermove", move, { passive: true });
+    const rolou = () => document.documentElement.toggleAttribute("data-rolou", window.scrollY > 8);
+    rolou();
+    window.addEventListener("scroll", rolou, { passive: true });
     let io: IntersectionObserver | undefined;
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches && "IntersectionObserver" in window) {
       io = new IntersectionObserver((es) => es.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("in"); io!.unobserve(en.target); } }),
@@ -35,7 +38,7 @@ function useSiteEffects() {
         el.classList.add("rv-pre"); io!.observe(el);
       });
     }
-    return () => { document.removeEventListener("pointermove", move); io?.disconnect(); };
+    return () => { document.removeEventListener("pointermove", move); window.removeEventListener("scroll", rolou); document.documentElement.removeAttribute("data-rolou"); io?.disconnect(); };
   }, []);
 }
 
