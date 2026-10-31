@@ -1,453 +1,754 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as RPE, KeyboardEvent as RKE } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import "./public-theme.css";
 import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
 import { Public } from "../ui/Shell";
-import { cacheClear, useApi } from "../ui/api";
+import { useApi } from "../ui/api";
+
+// ───────────────────────── tipos e helpers ─────────────────────────
+
+type FaqItem = (typeof FAQ_DEFAULT)[number];
+
+interface PublicSettings {
+  price?: { label?: string };
+  faq?: unknown;
+  site?: { invite?: string; hero_title?: string; hero_text?: string };
+}
+
+/** Variáveis CSS customizadas tipadas (substitui o `["--i" as any]` espalhado). */
+const vars = (v: Record<`--${string}`, string | number>) => v as CSSProperties;
+
+/** Dá título à aba por página. Remova se o <Public> já cuida disso. */
+function usePageTitle(title?: string) {
+  useEffect(() => {
+    if (title) document.title = `${title} | ZyraSallers`;
+  }, [title]);
+}
+
+/** Remove acentos e caixa, pra "configuracao" achar "configuração". */
+const normalizar = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+const PRECO_PADRAO = "R$ 5,00 por mês";
 
 const useSettings = () => {
-  const s = useApi<any>("/api/public/settings");
-  return { price: s.data?.price?.label ?? "R$ 5,00 por mês", faq: (s.data?.faq as typeof FAQ_DEFAULT) ?? FAQ_DEFAULT,
-    invite: s.data?.site?.invite ?? INVITE, title: s.data?.site?.hero_title, text: s.data?.site?.hero_text };
+  const { data } = useApi<PublicSettings>("/api/public/settings");
+  return useMemo(() => {
+    const faq = data?.faq;
+    return {
+      price: data?.price?.label || PRECO_PADRAO,
+      // se a API devolver algo que não é lista, cai no padrão em vez de quebrar o .slice()
+      faq: Array.isArray(faq) && faq.length ? (faq as FaqItem[]) : FAQ_DEFAULT,
+      invite: data?.site?.invite || INVITE,
+      title: data?.site?.hero_title || undefined,
+      text: data?.site?.hero_text || undefined,
+    };
+  }, [data]);
 };
 
-/* ---------- prévias demonstrativas: dados fictícios, sempre marcados como exemplo ---------- */
-const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function ExternalLink({ href, className, children }: { href: string; className: string; children: ReactNode }) {
+  return <a className={className} href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+}
 
-type Sale = { id: number; n: string; v: number; c: string; m: string; age: number };
-const SALES = [
-  { n: "Produto Exemplo", v: 20, c: "Marina", m: "Pix" },
-  { n: "Plano Mensal", v: 38.5, c: "Lucas", m: "Pix" },
-  { n: "Produto Pro", v: 59.9, c: "Ana", m: "Cartão" },
-  { n: "Produto Exemplo", v: 20, c: "Rafael", m: "Pix" },
-  { n: "Plano Mensal", v: 38.5, c: "Beatriz", m: "Boleto" },
-  { n: "Produto Pro", v: 59.9, c: "Caio", m: "Pix" },
+// ───────────────────────── prévia do hero ─────────────────────────
+// O lado direito do hero é o painel interativo (DemoPainel, definido mais abaixo).
+
+function HeroStage() {
+  return <div className="zs-stage"><DemoPainel /></div>;
+}
+
+// ───────────────────────── funcionalidades ─────────────────────────
+
+const icone = (d: ReactNode) => <svg viewBox="0 0 24 24" focusable="false">{d}</svg>;
+
+/** Ordem igual à de FEATURES em ../content. Tudo de um card num lugar só. */
+const FEATURE_META: { icon: ReactNode; span: string; blurb: string }[] = [
+  { span: "s4", blurb: "Do carrinho ao pagamento, sem sair do servidor.",
+    icon: icone(<><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" /></>) },
+  { span: "s2", blurb: "Responda clientes sem perder nenhum pedido.",
+    icon: icone(<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 1 1 21 11.5Z" />) },
+  { span: "s2", blurb: "Mantenha seus produtos e sua comunidade em movimento.",
+    icon: icone(<><path d="m3 11 18-5v12L3 14v-3z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></>) },
+  { span: "s4", blurb: "Controle quem entra e proteja seu servidor.",
+    icon: icone(<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />) },
+  { span: "s6", blurb: "Ferramentas extras para o que o seu servidor precisa.",
+    icon: icone(<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z" />) },
 ];
-const ago = (a: number) => (a <= 0 ? "agora" : `há ${a} min`);
-const mk = (k: number, age: number): Sale => ({ id: k, ...SALES[Math.abs(k) % SALES.length], age });
+const META_PADRAO = { icon: null, span: "s2", blurb: "" };
 
-function useCountUp(target: number, ms = 800) {
-  const [val, setVal] = useState(target);
-  const from = useRef(target);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setVal(target); from.current = target; return; }
-    const a = from.current, t0 = performance.now();
-    let raf = 0;
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3);
-      const x = a + (target - a) * e;
-      setVal(x); from.current = x;
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, ms]);
-  return val;
-}
+const Chips = ({ items }: { items: string[] }) =>
+  <div className="chips">{items.map((i) => <span className="chip" key={i}>{i}</span>)}</div>;
 
-/* notificação estilo iOS: toque expande, arrastar para a esquerda limpa */
-function Notif({ s, open, onToggle, onClear, onOpenApp }: {
-  s: Sale; open: boolean; onToggle: (id: number) => void; onClear: (id: number) => void; onOpenApp: () => void;
-}) {
-  const [dx, setDx] = useState(0);
-  const [drag, setDrag] = useState(false);
-  const [out, setOut] = useState(false);
-  const [col, setCol] = useState(false);
-  const st = useRef({ x: 0, moved: false });
-
-  const dismiss = () => {
-    if (out) return;
-    setDx(-420); setOut(true);
-    setTimeout(() => setCol(true), 180);
-    setTimeout(() => onClear(s.id), 480);
-  };
-  const down = (e: RPE<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("button")) return;
-    st.current = { x: e.clientX, moved: false };
-    setDrag(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const move = (e: RPE<HTMLDivElement>) => {
-    if (!drag) return;
-    const d = e.clientX - st.current.x;
-    if (Math.abs(d) > 6) st.current.moved = true;
-    setDx(d < 0 ? d : d * 0.25);
-  };
-  const up = () => {
-    if (!drag) return;
-    setDrag(false);
-    if (dx < -90) dismiss();
-    else { setDx(0); if (!st.current.moved) onToggle(s.id); }
-  };
-  const cancel = () => { setDrag(false); setDx(0); };
-  const key = (e: RKE<HTMLDivElement>) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(s.id); }
-    else if (e.key === "Delete" || e.key === "Backspace") dismiss();
-  };
-
-  return <div className={`nwrap${col ? " col" : ""}`}><div className="nin">
-    <div className={`ncard${open ? " open" : ""}${drag ? " drag" : ""}${out ? " out" : ""}`}
-      role="button" tabIndex={0} aria-expanded={open}
-      aria-label={`Venda aprovada, ${s.n}, ${brl(s.v)}. Enter abre os detalhes, Delete limpa.`}
-      style={{ transform: `translateX(${dx}px)` }}
-      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onKeyDown={key}>
-      <div className="nhead"><span className="nico">Z</span>
-        <div className="ntxt"><div className="ntop"><b>Venda aprovada</b><small>{ago(s.age)}</small></div>
-          <p>{s.n} · {brl(s.v)}</p></div></div>
-      <div className="nmore"><div>
-        <dl className="ndl"><dt>Cliente</dt><dd>{s.c}</dd><dt>Pagamento</dt><dd>{s.m}</dd><dt>Pedido</dt><dd>#{1040 + s.id}</dd></dl>
-        <div className="nbtns">
-          <button type="button" className="nbtn p" tabIndex={open ? 0 : -1} onClick={onOpenApp}>Ver no painel</button>
-          <button type="button" className="nbtn" tabIndex={open ? 0 : -1} onClick={dismiss}>Limpar</button>
-        </div>
-      </div></div>
-    </div></div></div>;
-}
-
-function Phone() {
-  const [view, setView] = useState<"lock" | "app">("lock");
-  const [total, setTotal] = useState(1180);
-  const [notifs, setNotifs] = useState<Sale[]>(() => [mk(-1, 3), mk(-2, 8)]);
-  const [log, setLog] = useState<Sale[]>(() => [mk(-1, 3), mk(-2, 8)]);
-  const [tick, setTick] = useState(0);
-  const [open, setOpen] = useState<number | null>(null);
-  const [torch, setTorch] = useState(false);
-  const [shot, setShot] = useState(0);
-  const [clock, setClock] = useState({ t: "9:41", d: "" });
-  const hold = useRef(false);
-  hold.current = open !== null; // enquanto uma notificação está aberta, não chega venda nova
-
-  useEffect(() => {
-    const f = () => {
-      const n = new Date();
-      setClock({
-        t: n.toLocaleTimeString("pt-BR", { hour: "numeric", minute: "2-digit", hour12: false }),
-        d: n.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }),
-      });
-    };
-    f();
-    const iv = setInterval(f, 20000);
-    return () => clearInterval(iv);
-  }, []);
-
-  useEffect(() => {
-    let k = 0;
-    const push = () => {
-      if (hold.current) return;
-      const s = mk(++k, 0);
-      const age = (l: Sale[]) => l.map((x) => ({ ...x, age: x.age + 1 }));
-      setTick((t) => t + 1);
-      setTotal((t) => t + s.v);
-      setNotifs((l) => [s, ...age(l)].slice(0, 6));
-      setLog((l) => [s, ...age(l)].slice(0, 4));
-    };
-    const first = setTimeout(push, 1200);
-    const iv = setInterval(push, 4500);
-    return () => { clearTimeout(first); clearInterval(iv); };
-  }, []);
-
-  const toggle = (id: number) => setOpen((o) => (o === id ? null : id));
-  const clear = (id: number) => { setNotifs((l) => l.filter((x) => x.id !== id)); setOpen((o) => (o === id ? null : o)); };
-  const clearAll = () => { setNotifs([]); setOpen(null); };
-  const openApp = () => { setView("app"); setOpen(null); };
-  const flip = () => { setView((v) => (v === "lock" ? "app" : "lock")); setOpen(null); };
-
-  const last = log[0];
-  const shown = useCountUp(total);
-  const bars = [34, 48, 40, 62, 52, 76, 58];
-  const lock = view === "lock";
-
-  return <div className="phone-wrap">
-    <div className={`phone${torch ? " torch" : ""}`} role="group" aria-label="Exemplo demonstrativo interativo de notificações no iPhone">
-      <i className="pbtn pbtn-a" /><i className="pbtn pbtn-u" /><i className="pbtn pbtn-d" /><i className="pbtn pbtn-r" />
-      <div className="phone-screen">
-
-        <div className="phone-notch" key={`n${tick}`}>
-          <span className="isl-in"><b className="isl-ico">Z</b><em>{brl(last.v)}</em></span>
-        </div>
-
-        <div className="ph-status" aria-hidden="true">
-          <span>{lock ? "" : clock.t}</span>
-          <span className="ph-icons">
-            <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1" /><rect x="4.5" y="5" width="3" height="6" rx="1" /><rect x="9" y="2.5" width="3" height="8.5" rx="1" /><rect x="13.5" y="0" width="3" height="11" rx="1" /></svg>
-            <svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M1.5 4a9.5 9.5 0 0 1 13 0" /><path d="M4 6.7a6 6 0 0 1 8 0" /><circle cx="8" cy="9.3" r="1" fill="currentColor" stroke="none" /></svg>
-            <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x=".5" y=".5" width="22" height="11" rx="3.5" stroke="currentColor" opacity=".45" /><rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor" /><path d="M24 4v4c.8-.3 1.5-1.1 1.5-2S24.8 4.3 24 4Z" fill="currentColor" opacity=".5" /></svg>
-          </span>
-        </div>
-
-        {/* ---------- tela de bloqueio ---------- */}
-        <div className={`ph-lock${lock ? "" : " off"}`} aria-hidden={!lock}>
-          <div className="ph-date">{clock.d}</div>
-          <div className="ph-clock">{clock.t}</div>
-
-          <div className="ph-notifs">
-            <div className="nbar"><span>Central de notificações</span>
-              {notifs.length > 1 && <button type="button" className="nclr" aria-label="Limpar todas as notificações" onClick={clearAll}>×</button>}</div>
-            <div className="nlist">
-              {notifs.map((s) => <Notif key={s.id} s={s} open={open === s.id} onToggle={toggle} onClear={clear} onOpenApp={openApp} />)}
-              {!notifs.length && <p className="nempty">Nenhuma notificação por enquanto</p>}
-            </div>
-          </div>
-
-          <button type="button" className={`ph-qa l${torch ? " on" : ""}`} aria-pressed={torch} aria-label="Lanterna" onClick={() => setTorch((t) => !t)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 2h8v4l-1.5 2v2h-5V8L8 6V2zm1.5 10h5v9a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-9z" /></svg>
-          </button>
-          <button type="button" className="ph-qa r" aria-label="Câmera" onClick={() => setShot((n) => n + 1)}>
-            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.5" /></svg>
-          </button>
-        </div>
-
-        {/* ---------- painel (app) ---------- */}
-        <div className={`ph-app${lock ? "" : " on"}`} aria-hidden={lock}>
-          <div className="pa-head"><span className="nico">Z</span><h5>Painel</h5><small>Hoje</small></div>
-          <div className="ph-wallet">
-            <small>Faturamento do mês</small>
-            <b>{brl(shown)}</b>
-            <i key={`w${tick}`}>+ {brl(last.v)} agora</i>
-          </div>
-          <div className="pa-chart" aria-hidden="true">
-            {bars.map((h, i) => <span key={i} style={{ ["--h" as any]: `${h}%` }} />)}
-            <span key={`h${tick}`} className="hot" style={{ ["--h" as any]: `${40 + last.v}%` }} />
-          </div>
-          <h4>Últimas vendas</h4>
-          <ul className="ph-list">{log.map((x) => <li key={x.id}>
-            <span className="ph-dot">{x.n[0]}</span>
-            <span><b>{x.n}</b><small>{x.c} · {ago(x.age)}</small></span><em>+ {brl(x.v)}</em></li>)}</ul>
-        </div>
-
-        {!lock && tick > 0 && <div className="ph-toast" key={`t${tick}`} role="status">
-          <span className="nico">Z</span>
-          <div><div className="ntop"><b>Venda aprovada</b><small>agora</small></div>
-            <p>{last.n} · {brl(last.v)}</p></div>
-        </div>}
-
-        <div className="ph-tag">Exemplo demonstrativo</div>
-        <button type="button" className="ph-home" aria-label={lock ? "Desbloquear e abrir o painel" : "Voltar à tela de bloqueio"} onClick={flip} />
-        <div className="ph-glare" />
-        {shot > 0 && <div className="ph-flash" key={shot} />}
-      </div>
-    </div>
-    <small className="ph-hint">{lock
-      ? "Toque nas notificações, arraste para o lado para limpar e use a barra de baixo para desbloquear."
-      : "Toque na barra de baixo para voltar à tela de bloqueio."}</small>
-  </div>;
-}
-
-type Msg = { title: string; text: string; btn?: string };
-const MOCKS: { channel: string; lead: string; msgs: Msg[] }[] = [
-  { channel: "loja", lead: "Do carrinho ao pagamento, sem sair do servidor.", msgs: [
-    { title: "Produto Exemplo", text: "Valor à vista: R$ 20,00", btn: "Comprar" },
-    { title: "Carrinho aberto", text: "Escolha a forma de pagamento para continuar." },
-    { title: "Pagamento aprovado", text: "Pedido #1042 confirmado." }] },
-  { channel: "ticket-0042", lead: "Receba pedidos de ajuda e responda sem perder nenhum.", msgs: [
-    { title: "Ticket aberto", text: "Cliente pediu ajuda com um pedido.", btn: "Assumir" },
-    { title: "Atendimento", text: "A equipe respondeu no canal do ticket." }] },
-  { channel: "sorteios", lead: "Mantenha seus produtos e sua comunidade em movimento.", msgs: [
-    { title: "Sorteio", text: "Prêmio: Produto Exemplo", btn: "Participar" },
-    { title: "Mensagem automática", text: "Novidades do servidor publicadas no canal." }] },
-  { channel: "seguranca", lead: "Controle quem entra e proteja seu servidor.", msgs: [
-    { title: "Proteção anti-raid", text: "Entradas em massa monitoradas." },
-    { title: "Verificação CAPTCHA", text: "Novo membro aguardando verificação." },
-    { title: "Auto cargo", text: "Cargo aplicado ao novo membro." }] },
-  { channel: "ferramentas", lead: "Ferramentas extras para o que o seu servidor precisa.", msgs: [
-    { title: "Código 2FA", text: "Ferramenta disponível no bot." },
-    { title: "Venda de Robux", text: "Ferramenta disponível no bot." }] },
-];
-
-function FeatureTabs() {
-  const [i, setI] = useState(0);
-  const g = FEATURES[i], m = MOCKS[i];
-  return <div className="ftabs">
-    <div className="ftab-list" role="tablist" aria-label="Categorias de funcionalidades">
-      {FEATURES.map((f, k) => <button key={f.title} role="tab" id={`tab-${k}`} aria-selected={k === i} aria-controls="tabpanel"
-        className={k === i ? "on" : ""} onClick={() => setI(k)}>{f.title}</button>)}
-    </div>
-    <div className="ftab-panel" id="tabpanel" role="tabpanel" aria-labelledby={`tab-${i}`}>
-      <div className="ftab-info"><h3>{g.title}</h3><p>{m.lead}</p>
-        <div className="chips">{g.items.map((it) => <span className="chip" key={it}>{it}</span>)}</div></div>
-      <div className="mock" key={i}>
-        <div className="mock-head"># {m.channel}<i>Exemplo demonstrativo</i></div>
-        <div className="mock-body">{m.msgs.map((x, k) => <div className="mock-msg" key={k} style={{ ["--i" as any]: k }}>
-          <div className="av">Z</div><div><b>ZyraSallers<span className="tag">BOT</span></b>
-            <div className="embed"><strong>{x.title}</strong>{x.text}</div>{x.btn && <span className="mbtn">{x.btn}</span>}</div></div>)}</div>
-      </div>
-    </div>
-  </div>;
-}
-
-function PanelMock() {
-  const bars = [30, 44, 36, 58, 50, 74, 66, 88, 70, 94];
-  return <div className="win" role="img" aria-label="Exemplo demonstrativo do painel de vendas">
-    <div className="win-bar"><i /><i /><i /><span>zyra-apps.xyz/dashboard</span><em>Exemplo demonstrativo</em></div>
-    <div className="win-body">
-      <div className="win-kpis">
-        <div><small>Faturamento</small><b>R$ 1.240,00</b></div><div><small>Vendas</small><b>62</b></div>
-        <div><small>Ticket médio</small><b>R$ 20,00</b></div><div><small>Clientes</small><b>38</b></div></div>
-      <div className="win-chart">{bars.map((h, k) => <span key={k} style={{ height: `${h}%` }} />)}</div>
-      <ul className="win-list"><li><span className="cav ph">M</span>Marina<small>Produto Exemplo</small><em>R$ 20,00</em></li>
-        <li><span className="cav ph">L</span>Lucas<small>Plano Mensal</small><em>R$ 38,50</em></li></ul>
-    </div>
+function Features() {
+  return <div className="bento">
+    {FEATURES.map((g, i) => {
+      const m = FEATURE_META[i] ?? META_PADRAO;
+      return <div key={g.title} data-reveal className={`cell spot ${m.span}`}>
+        <div className="ico" aria-hidden="true">{m.icon}</div>
+        <h3>{g.title}</h3>
+        {m.blurb && <p>{m.blurb}</p>}
+        <Chips items={g.items} />
+      </div>;
+    })}
   </div>;
 }
 
 function Marquee() {
-  const items = GATEWAYS.flatMap((g) => g.title === "Modo manual" ? ["Pagamento manual"] : g.items);
-  const row = (hidden?: boolean) => items.map((i) => <span className="chip" key={i + (hidden ? "b" : "")} aria-hidden={hidden}>{i}</span>);
-  return <div className="marquee" aria-label="Gateways de pagamento compatíveis"><div className="track">{row()}{row(true)}</div></div>;
-}
-
-const Chips = ({ items }: { items: string[] }) => <div className="chips">{items.map((i) => <span className="chip" key={i}>{i}</span>)}</div>;
-
-const GSUB: Record<string, string> = { "Automáticos": "Confirmação automática do pagamento", "Integração via IMAP": "Leitura de e-mails de confirmação", "Modo manual": "Você confere cada pagamento" };
-function Gateways() {
-  return <div className="glist">{GATEWAYS.map((g) => <div className="grow" data-reveal key={g.title}>
-    <div><h3>{g.title}</h3><small>{GSUB[g.title]}</small></div><Chips items={g.items} /></div>)}</div>;
-}
-
-function FaqList({ items, search }: { items: typeof FAQ_DEFAULT; search?: boolean }) {
-  const [q, setQ] = useState("");
-  const list = useMemo(() => items.filter((i) => (i.q + i.a).toLowerCase().includes(q.toLowerCase())), [items, q]);
-  return <div className="faqlist">
-    {search && <input className="input" placeholder="Pesquisar nas perguntas" value={q} onChange={(e) => setQ(e.target.value)} />}
-    {list.map((i, k) => <details key={i.q} className="faq"><summary><span><span className="fnum">{String(k + 1).padStart(2, "0")}</span>{i.q}</span></summary><p>{i.a}</p></details>)}
-    {!list.length && <p className="muted">Nenhuma pergunta encontrada.</p>}
+  const items = useMemo(() => FEATURES.flatMap((f) => f.items).slice(0, 18), []);
+  // a 2ª cópia existe só pro loop da animação: some dos leitores de tela
+  const row = (copia: "a" | "b") => items.map((i) =>
+    <span className="chip" key={`${copia}-${i}`} aria-hidden={copia === "b" || undefined}>{i}</span>);
+  return <div className="marquee" role="group" aria-label="Algumas funcionalidades do ZyraSallers">
+    <div className="track">{row("a")}{row("b")}</div>
   </div>;
 }
+
+// ───────────────────────── pagamentos ─────────────────────────
+
+const GATEWAY_SUB: Record<string, string> = {
+  "Automáticos": "Confirmação automática do pagamento",
+  "Integração via IMAP": "Leitura de e-mails de confirmação",
+  "Modo manual": "Você confere cada pagamento",
+};
+
+function Gateways() {
+  return <div className="glist">
+    {GATEWAYS.map((g) => <div className="grow" data-reveal key={g.title}>
+      <div><h3>{g.title}</h3>{GATEWAY_SUB[g.title] && <small>{GATEWAY_SUB[g.title]}</small>}</div>
+      <Chips items={g.items} />
+    </div>)}
+  </div>;
+}
+
+// ───────────────────────── painel de produto demonstrativo ─────────────────────────
+// Imita uma mensagem do bot no Discord. Tudo é fictício: o PIX e o QR Code gerados
+// NÃO são válidos e nenhum pagamento acontece. O CSS vai junto (prefixo .zs-).
+
+interface Plano { id: string; nome: string; desc: string; preco: number }
+
+const PRODUTO_DEMO = "Cl0nar servidores";
+const PLANO_DEMO: Plano = { id: "clone", nome: "Clone de servidor", desc: "Estrutura completa, pronta em poucos minutos", preco: 5 };
+
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const TEMPO_PIX = 10 * 60; // segundos
+
+type Etapa =
+  | { t: "painel" }
+  | { t: "carrinho"; plano: Plano }
+  | { t: "gerando"; plano: Plano }
+  | { t: "pix"; plano: Plano; pedido: number; expira: number }
+  | { t: "expirado"; plano: Plano }
+  | { t: "pago"; plano: Plano; pedido: number };
+
+const novoPedido = () => 1000 + Math.floor(Math.random() * 9000);
+const codigoFalso = (pedido: number) => `DEMO.ZYRASALLERS.PEDIDO${pedido}.EXEMPLO.NAO.PAGAVEL`;
+
+// QR Code de exemplo (visual, não escaneável)
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const QR_N = 29; // equivale a um QR "versão 3"
+
+function QrExemplo({ seed }: { seed: number }) {
+  const caminho = useMemo(() => {
+    const N = QR_N;
+    const rnd = mulberry32(seed);
+    const zonaFinder = (x: number, y: number) => (x < 8 && y < 8) || (x >= N - 8 && y < 8) || (x < 8 && y >= N - 8);
+    const zonaAlinh = (x: number, y: number) => x >= 20 && x <= 24 && y >= 20 && y <= 24;
+    const finder = (r: number, c: number) => r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+
+    let d = "";
+    const ponto = (x: number, y: number) => { d += `M${x} ${y}h1v1h-1z`; };
+
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        let escuro: boolean;
+        if (zonaFinder(x, y)) {
+          const ox = x >= N - 8 ? N - 7 : 0;
+          const oy = y >= N - 8 ? N - 7 : 0;
+          const r = y - oy, c = x - ox;
+          escuro = r >= 0 && r <= 6 && c >= 0 && c <= 6 && finder(r, c);
+        } else if (zonaAlinh(x, y)) {
+          const r = y - 20, c = x - 20;
+          escuro = r === 0 || r === 4 || c === 0 || c === 4 || (r === 2 && c === 2);
+        } else if (y === 6) escuro = x % 2 === 0;
+        else if (x === 6) escuro = y % 2 === 0;
+        else escuro = rnd() > 0.52;
+        if (escuro) ponto(x, y);
+      }
+    }
+    return d;
+  }, [seed]);
+
+  return (
+    <svg className="zs-qr" viewBox={`-2 -2 ${QR_N + 4} ${QR_N + 4}`} role="img" shapeRendering="crispEdges"
+      aria-label="QR Code de exemplo, não é válido para pagamento">
+      <rect x="-2" y="-2" width={QR_N + 4} height={QR_N + 4} fill="#fff" />
+      <path d={caminho} fill="#111" />
+    </svg>
+  );
+}
+
+// peças de mensagem
+
+function Mensagem({ children, efemera, onDispensar }: { children: ReactNode; efemera?: boolean; onDispensar?: () => void }) {
+  return (
+    <div className="zs-msg">
+      <div className="zs-av" aria-hidden="true">Z</div>
+      <div className="zs-msg-corpo">
+        <div className="zs-msg-topo">
+          <b>ZyraSallers</b><span className="zs-tag">BOT</span>
+          <time>Hoje às 06:16</time>
+        </div>
+        {children}
+        {efemera && (
+          <p className="zs-efemera">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+            Somente você pode ver isso.{" "}
+            <button type="button" onClick={onDispensar}>Dispensar mensagem</button>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const Embed = ({ cor = "#fff", titulo, children }: { cor?: string; titulo: string; children: ReactNode }) => (
+  <div className="zs-embed" style={vars({ "--bar": cor })}>
+    <h4>{titulo}</h4>
+    {children}
+  </div>
+);
+
+const Campo = ({ nome, valor }: { nome: string; valor: ReactNode }) => (
+  <div className="zs-campo"><span>{nome}</span><b>{valor}</b></div>
+);
+
+function Contagem({ expira, aoExpirar }: { expira: number; aoExpirar: () => void }) {
+  const [resta, setResta] = useState(() => Math.max(0, Math.ceil((expira - Date.now()) / 1000)));
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const r = Math.max(0, Math.ceil((expira - Date.now()) / 1000));
+      setResta(r);
+      if (r === 0) { clearInterval(iv); aoExpirar(); }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [expira, aoExpirar]);
+  const mm = String(Math.floor(resta / 60)).padStart(2, "0");
+  const ss = String(resta % 60).padStart(2, "0");
+  return <>{mm}:{ss}</>;
+}
+
+function DemoPainel() {
+  const [etapa, setEtapa] = useState<Etapa>({ t: "painel" });
+  const [copiado, setCopiado] = useState<null | "ok" | "erro">(null);
+
+  // "gerando" -> "pix" depois de um instante, como o bot faria
+  useEffect(() => {
+    if (etapa.t !== "gerando") return;
+    const plano = etapa.plano;
+    const tm = setTimeout(() => setEtapa({ t: "pix", plano, pedido: novoPedido(), expira: Date.now() + TEMPO_PIX * 1000 }), 900);
+    return () => clearTimeout(tm);
+  }, [etapa]);
+
+  useEffect(() => {
+    if (!copiado) return;
+    const tm = setTimeout(() => setCopiado(null), 2200);
+    return () => clearTimeout(tm);
+  }, [copiado]);
+
+  const reiniciar = () => { setEtapa({ t: "painel" }); setCopiado(null); };
+
+  const copiar = async (texto: string) => {
+    try { await navigator.clipboard.writeText(texto); setCopiado("ok"); } catch { setCopiado("erro"); }
+  };
+
+  const expirar = useMemo(
+    () => () => setEtapa((e) => (e.t === "pix" ? { t: "expirado", plano: e.plano } : e)),
+    [],
+  );
+
+  return (
+    <>
+      <style>{DEMO_CSS}</style>
+          <div className="zs-janela">
+            <div className="zs-janela-topo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16" /></svg>
+              <b>loja</b><i>Exemplo demonstrativo</i>
+            </div>
+
+            <div className="zs-chat">
+              {/* mensagem fixa do painel, igual ao bot no Discord */}
+              <Mensagem>
+                <div className="zs-embed zs-produto" style={vars({ "--bar": "#fff" })}>
+                  <p className="zs-eyebrow">Clonar</p>
+                  <h4 className="zs-titulo">{PRODUTO_DEMO}</h4>
+                  <p className="zs-sub">Estrutura idêntica ao original, pronta em poucos minutos.</p>
+
+                  <blockquote className="zs-cit">
+                    Clone qualquer servidor e tenha uma organização <b>idêntica ao original</b>, sem precisar configurar tudo do zero. Praticidade, rapidez e uma estrutura pronta para usar.
+                  </blockquote>
+
+                  <p className="zs-incluso">O que está incluído:</p>
+                  <ul className="zs-lista">
+                    <li><span aria-hidden="true">📂</span><span><u>Estrutura completa</u> do servidor</span></li>
+                    <li><span aria-hidden="true">🔧</span><span><b>Canais &amp; Categorias</b>, <b>permissões</b>, <b>cargos</b> e <b>emojis &amp; stickers</b></span></li>
+                    <li><span aria-hidden="true">⚡</span><span>Clonagem <u>rápida</u> e sem complicação</span></li>
+                    <li><span aria-hidden="true">💎</span><span>Alta qualidade e agilidade na entrega</span></li>
+                  </ul>
+                  <p className="zs-carteira" aria-hidden="true">👛</p>
+
+                  <hr />
+                  <div className="zs-rod">
+                    <p className="zs-preco">{brl(PLANO_DEMO.preco)}</p>
+                    <button type="button" className="zs-comprar" disabled={etapa.t === "gerando"}
+                      onClick={() => { setCopiado(null); setEtapa({ t: "carrinho", plano: PLANO_DEMO }); }}>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 10.2a1 1 0 0 0 1 .8h8.7a1 1 0 0 0 1-.76L20 8H6.2" /><circle cx="9.5" cy="19" r="1.4" /><circle cx="17" cy="19" r="1.4" /></svg>
+                      Comprar
+                    </button>
+                  </div>
+                </div>
+              </Mensagem>
+
+              {/* fluxo de compra: aparece como mensagem só sua, igual no Discord */}
+              <div aria-live="polite">
+                {etapa.t === "carrinho" && (
+                  <Mensagem efemera onDispensar={reiniciar}>
+                    <Embed titulo="Carrinho aberto">
+                      <Campo nome="Produto" valor={PRODUTO_DEMO} />
+                      <Campo nome="Item" valor={etapa.plano.nome} />
+                      <Campo nome="Valor" valor={brl(etapa.plano.preco)} />
+                      <div className="zs-acoes">
+                        <button type="button" className="zs-b verde" onClick={() => setEtapa({ t: "gerando", plano: etapa.plano })}>Comprar com PIX</button>
+                        <button type="button" className="zs-b cinza" onClick={reiniciar}>Cancelar</button>
+                      </div>
+                    </Embed>
+                  </Mensagem>
+                )}
+
+                {etapa.t === "gerando" && (
+                  <Mensagem efemera onDispensar={reiniciar}>
+                    <Embed cor="#5865f2" titulo="Gerando pagamento">
+                      <p className="zs-gerando" role="status">Criando seu PIX<span className="zs-pts" aria-hidden="true"><i /><i /><i /></span></p>
+                    </Embed>
+                  </Mensagem>
+                )}
+
+                {etapa.t === "pix" && (
+                  <Mensagem efemera onDispensar={reiniciar}>
+                    <Embed cor="#5865f2" titulo="Pague com PIX">
+                      <div className="zs-pix">
+                        <QrExemplo seed={etapa.pedido} />
+                        <div className="zs-pix-info">
+                          <Campo nome="Valor" valor={brl(etapa.plano.preco)} />
+                          <Campo nome="Pedido" valor={`#${etapa.pedido}`} />
+                          <Campo nome="Expira em" valor={<Contagem expira={etapa.expira} aoExpirar={expirar} />} />
+                        </div>
+                      </div>
+                      <label className="zs-copia">
+                        <span>PIX copia e cola (exemplo)</span>
+                        <input readOnly value={codigoFalso(etapa.pedido)} onFocus={(e) => e.currentTarget.select()} />
+                      </label>
+                      <div className="zs-acoes">
+                        <button type="button" className="zs-b cinza" onClick={() => copiar(codigoFalso(etapa.pedido))}>
+                          {copiado === "ok" ? "Código copiado" : copiado === "erro" ? "Selecione e copie" : "Copiar código"}
+                        </button>
+                        <button type="button" className="zs-b azul" onClick={() => setEtapa({ t: "pago", plano: etapa.plano, pedido: etapa.pedido })}>Simular pagamento</button>
+                      </div>
+                      <p className="zs-rodape">Exemplo: este QR Code não é válido.</p>
+                    </Embed>
+                  </Mensagem>
+                )}
+
+                {etapa.t === "expirado" && (
+                  <Mensagem efemera onDispensar={reiniciar}>
+                    <Embed cor="#f0b232" titulo="Pagamento expirado">
+                      <p className="zs-texto">O tempo para pagar acabou. Gere um novo PIX para continuar.</p>
+                      <div className="zs-acoes">
+                        <button type="button" className="zs-b verde" onClick={() => setEtapa({ t: "gerando", plano: etapa.plano })}>Gerar novo PIX</button>
+                      </div>
+                    </Embed>
+                  </Mensagem>
+                )}
+
+                {etapa.t === "pago" && (
+                  <>
+                    <Mensagem>
+                      <Embed cor="#23a559" titulo="Pagamento aprovado">
+                        <p className="zs-texto">Pedido <b>#{etapa.pedido}</b> confirmado. {PRODUTO_DEMO}, {brl(etapa.plano.preco)}.</p>
+                      </Embed>
+                    </Mensagem>
+                    <Mensagem efemera onDispensar={reiniciar}>
+                      <Embed cor="#23a559" titulo="Entrega realizada">
+                        <p className="zs-texto">O produto foi enviado para você por mensagem direta.</p>
+                        <div className="zs-acoes">
+                          <button type="button" className="zs-b cinza" onClick={reiniciar}>Refazer demonstração</button>
+                        </div>
+                      </Embed>
+                    </Mensagem>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="zs-janela-rodape">Dados fictícios, apenas para demonstração.</div>
+          </div>
+    </>
+  );
+}
+
+const DEMO_CSS = `
+
+.zs-stage{width:100%;max-width:580px;justify-self:center}
+.zs-janela{--bg:#0f0f11;--bg2:#0b0b0d;--bg3:#1a1b1e;--tx:#dbdee1;--mut:#9a9da6;--linha:#2a2b30;
+  background:var(--bg);color:var(--tx);border:1px solid #232428;border-radius:16px;overflow:hidden;
+  box-shadow:0 30px 80px -30px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.02) inset;
+  font-family:'gg sans','Segoe UI',system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.4;text-align:left}
+.zs-janela *{box-sizing:border-box}
+.zs-janela h4,.zs-janela p{margin:0}
+.zs-janela-topo{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--bg);border-bottom:1px solid #1c1d20}
+.zs-janela-topo svg{width:20px;height:20px;stroke:var(--mut);fill:none;stroke-width:2;stroke-linecap:round}
+.zs-janela-topo b{font-weight:600;color:#f2f3f5}
+.zs-janela-topo i{margin-left:auto;font-style:normal;font-size:12px;color:var(--mut)}
+.zs-chat{padding:18px 16px 8px;display:grid;gap:4px}
+.zs-janela-rodape{padding:10px 16px 14px;font-size:12px;color:var(--mut)}
+
+.zs-msg{display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px;padding:6px 0 10px}
+.zs-av{width:40px;height:40px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;font-weight:800}
+.zs-msg-topo{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.zs-msg-topo b{color:#fff;font-weight:600}
+.zs-msg-topo time{font-size:12px;color:var(--mut);margin-left:4px}
+.zs-tag{background:#5865f2;color:#fff;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;line-height:1.4}
+
+.zs-embed{position:relative;background:var(--bg2);border:1px solid var(--linha);border-left:5px solid var(--bar,#fff);border-radius:8px;padding:14px 16px 16px;max-width:520px;display:grid;gap:10px}
+.zs-embed h4{font-size:15px;font-weight:700;color:#fff}
+.zs-embed hr{border:0;border-top:1px solid var(--linha);margin:4px 0 2px}
+.zs-texto{display:grid;gap:6px;font-size:14px}
+
+/* painel do produto (igual à foto) */
+.zs-produto{gap:8px}
+.zs-eyebrow{font-size:13px;font-weight:700;color:#e6e7ea}
+.zs-titulo{font-size:19px!important;font-weight:700;letter-spacing:-.01em}
+.zs-sub{font-size:13px;font-style:italic;color:var(--mut)}
+.zs-cit{margin:6px 0 4px;padding:12px 14px 12px 14px;border-left:4px solid #3a3b40;background:rgba(255,255,255,.015);border-radius:0 6px 6px 0;font-size:13px;line-height:1.55;color:#c4c7ce}
+.zs-cit b{color:#fff}
+.zs-incluso{font-size:12.5px;font-weight:700;color:#e6e7ea;margin-top:4px}
+.zs-lista{list-style:none;margin:0;padding:0;display:grid;gap:7px;font-size:13px;color:#c4c7ce}
+.zs-lista li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:6px;align-items:center}
+.zs-lista li>span:first-child{font-size:16px;line-height:1;text-align:center}
+.zs-lista b{color:#fff}
+.zs-lista u{text-decoration-color:rgba(255,255,255,.35);text-underline-offset:2px}
+.zs-carteira{font-size:15px;line-height:1;margin-top:2px}
+.zs-rod{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:6px}
+.zs-preco{font-weight:700;color:#fff;font-size:15px}
+.zs-comprar{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:14px;font-weight:600;color:#fff;background:#16171a;border:1px solid #34353b;border-radius:10px;padding:9px 18px;cursor:pointer;transition:background .15s,border-color .15s,transform .1s}
+.zs-comprar svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.zs-comprar:hover:not(:disabled){background:#202125;border-color:#4a4b52}
+.zs-comprar:active:not(:disabled){transform:scale(.97)}
+.zs-comprar:disabled{opacity:.55;cursor:default}
+
+.zs-campo{display:flex;justify-content:space-between;gap:16px;font-size:14px}
+.zs-campo span{color:var(--mut)}
+.zs-campo b{color:#fff;font-variant-numeric:tabular-nums}
+.zs-acoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.zs-b{font:inherit;font-size:14px;font-weight:600;color:#fff;border:0;border-radius:6px;padding:8px 16px;cursor:pointer;transition:filter .12s}
+.zs-b:hover{filter:brightness(1.12)}
+.zs-b.verde{background:#248046}.zs-b.cinza{background:#3b3c42}.zs-b.azul{background:#5865f2}
+.zs-comprar:focus-visible,.zs-b:focus-visible,.zs-efemera button:focus-visible,.zs-copia input:focus-visible{outline:2px solid #00a8fc;outline-offset:2px}
+
+.zs-efemera{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:6px;font-size:12px;color:var(--mut)}
+.zs-efemera svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.zs-efemera button{background:none;border:0;padding:0;font:inherit;color:#00a8fc;cursor:pointer}
+.zs-efemera button:hover{text-decoration:underline}
+
+.zs-pix{display:grid;grid-template-columns:132px minmax(0,1fr);gap:16px;align-items:center}
+.zs-qr{width:132px;height:132px;border-radius:8px;display:block}
+.zs-pix-info{display:grid;gap:8px}
+.zs-copia{display:grid;gap:5px;font-size:12px;color:var(--mut)}
+.zs-copia input{width:100%;background:var(--bg3);color:var(--tx);border:1px solid var(--linha);border-radius:6px;padding:8px 10px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.zs-rodape{font-size:12px;color:var(--mut)}
+
+.zs-gerando{display:flex;align-items:center;gap:6px;font-size:14px}
+.zs-pts{display:inline-flex;gap:4px}
+.zs-pts i{width:6px;height:6px;border-radius:50%;background:var(--mut);animation:zs-pt 1s infinite ease-in-out}
+.zs-pts i:nth-child(2){animation-delay:.15s}.zs-pts i:nth-child(3){animation-delay:.3s}
+@keyframes zs-pt{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.zs-pts i{animation:none;opacity:.7}.zs-comprar{transition:none}}
+
+@media (max-width:480px){.zs-msg{grid-template-columns:32px minmax(0,1fr);gap:10px}.zs-av{width:32px;height:32px}
+  .zs-pix{grid-template-columns:1fr;justify-items:center}.zs-pix-info{width:100%}.zs-chat{padding-inline:10px}}
+`;
+
+// ───────────────────────── FAQ ─────────────────────────
+
+function FaqList({ items, search }: { items: FaqItem[]; search?: boolean }) {
+  const [q, setQ] = useState("");
+  const indexado = useMemo(() => items.map((item) => ({ item, texto: normalizar(`${item.q} ${item.a}`) })), [items]);
+  const lista = useMemo(() => {
+    const termo = normalizar(q.trim());
+    return termo ? indexado.filter((x) => x.texto.includes(termo)) : indexado;
+  }, [indexado, q]);
+
+  return <div className="faqlist">
+    {search && <input className="input" type="search" placeholder="Pesquisar nas perguntas" aria-label="Pesquisar nas perguntas"
+      value={q} onChange={(e) => setQ(e.target.value)} />}
+    {lista.map(({ item }) => <details key={item.q} className="faq"><summary>{item.q}</summary><p>{item.a}</p></details>)}
+    {!lista.length && <p className="muted" role="status">Nenhuma pergunta encontrada.</p>}
+  </div>;
+}
+
+// ───────────────────────── blocos compartilhados ─────────────────────────
+
+const BTN_SOBRE_CLARO: CSSProperties = { color: "#000", borderColor: "#d4d4d8" };
 
 function PriceBox({ price, invite }: { price: string; invite: string }) {
   return <div className="pricebox" data-reveal>
-    <div><h2>ZyraSallers</h2><div className="big">{price}</div><p style={{ marginTop: 14 }}>Preço informado do produto.</p></div>
-    <div className="side"><a className="btn ink lg" href={invite} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a>
-      <a className="btn lg" style={{ color: "#000", borderColor: "#d4d4d8" }} href="/dashboard">Acessar meu dashboard</a></div>
+    <div>
+      <h2>ZyraSallers</h2>
+      <div className="big">{price}</div>
+      <p style={{ marginTop: 14 }}>Preço informado do produto.</p>
+    </div>
+    <div className="side">
+      <ExternalLink className="btn ink lg" href={invite}>Adquirir ZyraSallers</ExternalLink>
+      <a className="btn lg" style={BTN_SOBRE_CLARO} href="/dashboard">Acessar meu dashboard</a>
+    </div>
   </div>;
 }
 
-const autoGateways = GATEWAYS[0].items.length, imapBanks = GATEWAYS[1].items.length;
-function Stats({ price }: { price: string }) {
-  return <div className="stats wrap" data-reveal>
-    <div><b>{price.replace(" por mês", "")}</b><span>por mês</span></div>
-    <div><b>{autoGateways}</b><span>gateways automáticos</span></div>
-    <div><b>{imapBanks}</b><span>bancos via IMAP</span></div>
-    <div><b>PT-BR</b><span>bot e painel em português</span></div>
-  </div>;
+function Hero({ pill, title, lead, actions, note }: {
+  pill: string; title: ReactNode; lead: ReactNode; actions: ReactNode; note: ReactNode;
+}) {
+  return <section className="hero"><div className="wrap">
+    <div>
+      <span className="pill"><i aria-hidden="true" /> {pill}</span>
+      <h1>{title}</h1>
+      <p className="lead">{lead}</p>
+      <div className="actions">{actions}</div>
+      <small>{note}</small>
+    </div>
+    <HeroStage />
+  </div></section>;
 }
+
+const PageHead = ({ title, children, narrow }: { title: string; children?: ReactNode; narrow?: boolean }) =>
+  <section className="pagehead"><div className={narrow ? "wrap narrow" : "wrap"}><h1>{title}</h1>{children}</div></section>;
+
+// ───────────────────────── páginas ─────────────────────────
+
+const PASSOS = [
+  { t: "Adquira o bot", d: "A compra acontece no servidor oficial da Zyra Applications no Discord." },
+  { t: "Entre com o Discord", d: "O site identifica os bots vinculados à sua conta." },
+  { t: "Acompanhe suas vendas", d: "Veja estatísticas, clientes e histórico de cada bot no dashboard." },
+];
 
 export function Home() {
   const s = useSettings();
+  const faqResumo = useMemo(() => s.faq.slice(0, 5), [s.faq]);
+
   return <Public>
-    <section className="hero"><div className="wrap">
-      <div><span className="pill"><i /> Bot brasileiro de vendas para Discord</span>
-        <h1>{s.title ?? <>Automatize suas vendas <em>dentro do Discord.</em></>}</h1>
-        <p className="lead">{s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}</p>
-        <div className="actions"><a className="btn solid lg" href="/zyrasallers">Conhecer o ZyraSallers</a>
-          <a className="btn lg" href="#recursos">Ver funcionalidades</a></div></div>
-      <Phone /></div></section>
+    <Hero
+      pill="Bot brasileiro de vendas para Discord"
+      title={s.title ?? <>Automatize suas vendas <em>dentro do Discord.</em></>}
+      lead={s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}
+      actions={<>
+        <a className="btn solid lg" href="/zyrasallers">Conhecer o ZyraSallers</a>
+        <a className="btn lg" href="/zyrasallers#funcionalidades">Ver funcionalidades</a>
+      </>}
+      note={<>A partir de <b>{s.price}</b></>}
+    />
 
-    <Stats price={s.price} />
+    <Marquee />
 
-    <section className="sec" id="recursos"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>O bot cuida do servidor inteiro</h2>
-        <p>Cada aba mostra uma parte do que o ZyraSallers oferece dentro do seu servidor.</p></div>
-      <FeatureTabs /></div></section>
+    <section className="sec"><div className="wrap">
+      <div className="sec-head" data-reveal>
+        <h2>Tudo que o seu servidor precisa para vender</h2>
+        <p>Pedidos, pagamentos, clientes, divulgação e administração em um único bot.</p>
+      </div>
+      <Features />
+    </div></section>
 
     <section className="sec rule" id="pagamentos"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Receba pelo método que você já usa</h2><p>Gateways automáticos, integração via IMAP e modo manual.</p></div></div>
-      <Marquee /><div className="wrap" style={{ marginTop: 40 }}><Gateways /></div></section>
+      <div className="sec-head" data-reveal>
+        <h2>Receba pelo método que você já usa</h2>
+        <p>Gateways automáticos, integração via IMAP e modo manual.</p>
+      </div>
+      <Gateways />
+    </div></section>
 
-    <section className="sec rule"><div className="wrap two2">
-      <div data-reveal><h2>Acompanhe tudo no seu painel</h2>
-        <p className="lead2">Entre com o Discord e veja os bots vinculados à sua conta, com estatísticas, clientes e histórico de vendas de cada um.</p>
-        <ol className="steps2">
-          <li><b>Adquira o bot</b><span>A compra acontece no servidor oficial da Zyra Applications no Discord.</span></li>
-          <li><b>Entre com o Discord</b><span>O site identifica os bots vinculados à sua conta.</span></li>
-          <li><b>Acompanhe suas vendas</b><span>Estatísticas, clientes e histórico de cada bot, no computador ou no celular.</span></li></ol>
-        <a className="btn solid" href="/login">Acessar painel</a></div>
-      <div data-reveal><PanelMock /></div></div></section>
+    <section className="sec rule"><div className="wrap">
+      <div className="sec-head" data-reveal><h2>Do servidor ao painel em três passos</h2></div>
+      <div className="steps">
+        {PASSOS.map((p, i) => <div key={p.t} data-reveal className={`step spot${i ? ` d${i}` : ""}`}>
+          <h3>{p.t}</h3><p>{p.d}</p>
+        </div>)}
+      </div>
+    </div></section>
 
     <section className="sec tight"><div className="wrap"><PriceBox price={s.price} invite={s.invite} /></div></section>
 
-    <section className="sec rule"><div className="wrap two2 top">
-      <div data-reveal><h2>Antes de começar</h2><p className="lead2">Ficou com alguma pergunta que não está aqui? Fale com a gente no Discord.</p>
-        <a className="btn" href={s.invite} target="_blank" rel="noreferrer">Entrar no Discord</a></div>
-      <div><FaqList items={s.faq.slice(0, 6)} /><p style={{ marginTop: 22 }}><a href="/faq">Ver todas as perguntas</a></p></div></div></section>
+    <section className="sec rule"><div className="wrap narrow">
+      <div className="sec-head" data-reveal><h2>Perguntas frequentes</h2></div>
+      <FaqList items={faqResumo} />
+      <p style={{ marginTop: 24 }}><a href="/faq">Ver todas as perguntas</a></p>
+    </div></section>
 
-    <section className="cta"><div className="wrap"><h2>Pronto para vender mais pelo Discord?</h2>
-      <a className="btn solid lg" href={s.invite} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a></div></section>
+    <section className="cta"><div className="wrap">
+      <h2>Pronto para vender mais pelo Discord?</h2>
+      <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
+    </div></section>
   </Public>;
 }
 
 export function Product() {
   const s = useSettings();
+  usePageTitle("ZyraSallers");
+
   return <Public>
-    <section className="hero"><div className="wrap">
-      <div><span className="pill"><i /> Zyra Applications</span><h1>ZyraSallers</h1>
-        <p className="lead">Bot brasileiro desenvolvido pela Zyra Applications, focado em vendas automatizadas dentro do Discord. Possui ferramentas para gerenciar pedidos, pagamentos, clientes, divulgação de produtos e administração do servidor.</p>
-        <div className="actions"><a className="btn solid lg" href={s.invite} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a>
-          <a className="btn lg" href="/dashboard">Acessar meu dashboard</a></div>
-        <small className="muted" style={{ display: "block", marginTop: 22 }}>Preço informado: <b style={{ color: "#fff" }}>{s.price}</b></small></div>
-      <Phone /></div></section>
-    <Stats price={s.price} />
+    <Hero
+      pill="Zyra Applications"
+      title="ZyraSallers"
+      lead="Bot brasileiro desenvolvido pela Zyra Applications, focado em vendas automatizadas dentro do Discord. Possui ferramentas para gerenciar pedidos, pagamentos, clientes, divulgação de produtos e administração do servidor."
+      actions={<>
+        <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
+        <a className="btn lg" href="/dashboard">Acessar meu dashboard</a>
+      </>}
+      note={<>Preço informado: <b>{s.price}</b></>}
+    />
+    <Marquee />
+
     <section className="sec" id="funcionalidades"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Funcionalidades</h2>
-        <p>Funcionalidades informadas do produto. A disponibilidade de cada uma depende da configuração real do seu bot.</p></div><FeatureTabs /></div></section>
+      <div className="sec-head" data-reveal>
+        <h2>Funcionalidades</h2>
+        <p>Funcionalidades informadas do produto. A disponibilidade de cada uma depende da configuração real do seu bot.</p>
+      </div>
+      <Features />
+    </div></section>
+
     <section className="sec rule"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Bancos e gateways de pagamento</h2></div><Gateways /></div></section>
-    <section className="sec rule"><div className="wrap narrow"><div className="sec-head" data-reveal><h2>Perguntas frequentes</h2></div><FaqList items={s.faq} /></div></section>
+      <div className="sec-head" data-reveal><h2>Bancos e gateways de pagamento</h2></div>
+      <Gateways />
+    </div></section>
+
+    <section className="sec rule"><div className="wrap narrow">
+      <div className="sec-head" data-reveal><h2>Perguntas frequentes</h2></div>
+      <FaqList items={s.faq} />
+    </div></section>
   </Public>;
 }
 
 export function Pricing() {
   const s = useSettings();
+  usePageTitle("Preços");
+
   return <Public>
-    <section className="pagehead"><div className="wrap"><h1>Preços</h1>
-      <p>Este é o preço informado. Não há outros planos, taxas ou benefícios comerciais definidos nesta página.</p></div></section>
+    <PageHead title="Preços">
+      <p>Este é o preço informado. Não há outros planos, taxas ou benefícios comerciais definidos nesta página.</p>
+    </PageHead>
     <section className="sec tight"><div className="wrap"><PriceBox price={s.price} invite={s.invite} /></div></section>
   </Public>;
 }
 
 export function Faq() {
   const s = useSettings();
+  usePageTitle("Perguntas frequentes");
+
   return <Public>
-    <section className="pagehead"><div className="wrap narrow"><h1>Perguntas frequentes</h1></div></section>
+    <PageHead title="Perguntas frequentes" narrow />
     <section className="sec tight"><div className="wrap narrow"><FaqList items={s.faq} search /></div></section>
   </Public>;
 }
 
-export function Login() {
-  useEffect(() => { cacheClear(); }, []); // nunca mostrar dados em cache de outra conta
-  const me = useApi<any>("/api/me");
-  useEffect(() => { if (me.data?.discord_id) window.location.replace("/dashboard"); }, [me.data]); // já conectado: vai direto
-  const p = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const erro = p.get("erro");
-  const HINT: Record<string, string> = {
-    state: "A verificação de segurança do login expirou. Tente entrar de novo.",
-    token: "O Discord recusou o código de login. Confira o DISCORD_CLIENT_SECRET e o redirect cadastrado.",
-    usuario: "Não foi possível ler seu perfil no Discord. Tente novamente.",
-    banco: "Não foi possível salvar seu perfil. Confira SUPABASE_URL, a chave de serviço e as migrações do banco.",
-    sessao: "Não foi possível criar sua sessão. Confira as migrações do banco.",
-  };
-  const msg = p.get("expirada") ? "Sua sessão expirou. Entre novamente."
-    : erro ? `${HINT[erro] ?? "Não foi possível concluir o login com o Discord. Tente novamente."} (código: ${erro})` : null;
-  return <Public><div className="wrap"><div className="loginbox"><h1 style={{ fontSize: "2.2rem" }}>Entrar</h1>
-    <p style={{ margin: "14px 0 24px" }}>Use sua conta Discord para acessar o painel dos seus bots. Pedimos apenas a permissão de identificação: seu ID, nome e avatar.</p>
-    {msg && <div className="state err">{msg}</div>}
-    {me.data?.discord_id ? <div className="state">Você já está conectado. Abrindo o painel…</div>
-      : <a className="btn solid lg" href="/api/auth/discord">Entrar com Discord</a>}
-    <p className="muted" style={{ marginTop: 18, fontSize: ".88rem" }}>Neste aparelho você continua conectado por até 60 dias de uso.</p></div></div></Public>;
+// ───────────────────────── login ─────────────────────────
+
+/** Mensagens para o público: sem nomes de variáveis de ambiente nem detalhes de infraestrutura. */
+const ERROS_LOGIN: Record<string, string> = {
+  state: "A verificação de segurança do login expirou. Tente entrar de novo.",
+  token: "O Discord não concluiu o login. Tente novamente em instantes.",
+  usuario: "Não foi possível ler seu perfil no Discord. Tente novamente.",
+  banco: "Não foi possível salvar seu perfil agora. Tente novamente em instantes.",
+  sessao: "Não foi possível criar sua sessão agora. Tente novamente em instantes.",
+};
+const ERRO_GENERICO = "Não foi possível concluir o login com o Discord. Tente novamente.";
+
+function useMensagemLogin() {
+  return useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("expirada")) return "Sua sessão expirou. Entre novamente.";
+    const erro = p.get("erro");
+    if (!erro) return null;
+    // hasOwnProperty: evita que ?erro=constructor devolva algo de Object.prototype
+    const conhecido = Object.prototype.hasOwnProperty.call(ERROS_LOGIN, erro);
+    const codigo = erro.replace(/[^\w-]/g, "").slice(0, 32);
+    return `${conhecido ? ERROS_LOGIN[erro] : ERRO_GENERICO} (código: ${codigo})`;
+  }, []);
 }
 
+export function Login() {
+  const msg = useMensagemLogin();
+  usePageTitle("Entrar");
+
+  return <Public><div className="wrap"><div className="loginbox">
+    <h1 style={{ fontSize: "2.2rem" }}>Entrar</h1>
+    <p style={{ margin: "14px 0 24px" }}>
+      Use sua conta Discord para acessar o painel dos seus bots. Pedimos apenas a permissão de identificação: seu ID, nome e avatar.
+    </p>
+    {msg && <div className="state err" role="alert">{msg}</div>}
+    <a className="btn solid lg" href="/api/auth/discord">Entrar com Discord</a>
+  </div></div></Public>;
+}
+
+// ───────────────────────── páginas legais ─────────────────────────
+
+/** Troque para false quando o texto jurídico for revisado: hoje esse aviso aparece pra todo visitante. */
+const MOSTRAR_AVISO_MODELO = true;
+
+interface SecaoLegal { h?: string; p: string[] }
+
+const LEGAL: Record<"privacidade" | "termos", { titulo: string; secoes: SecaoLegal[] }> = {
+  privacidade: {
+    titulo: "Política de Privacidade",
+    secoes: [
+      { h: "Dados que coletamos", p: [
+        "Ao entrar com Discord, guardamos seu ID, nome de usuário, nome global, avatar e as datas de primeiro e último acesso. Não guardamos tokens de acesso do Discord.",
+        "Das vendas recebidas do Bot Manager guardamos apenas o necessário para gestão: ID, nome e ícone do cliente (quando enviados), produto, valores, método de pagamento, status e datas.",
+      ] },
+      { h: "Como usamos", p: [
+        "Para autenticar você, identificar quais bots estão vinculados à sua conta e exibir estatísticas e histórico de vendas.",
+      ] },
+      { h: "Seus direitos", p: [
+        "Você pode solicitar acesso, correção ou exclusão dos seus dados pelo servidor oficial no Discord, respeitadas as obrigações legais de guarda.",
+      ] },
+    ],
+  },
+  termos: {
+    titulo: "Termos de Uso",
+    secoes: [
+      { p: [
+        "Ao usar o site você concorda em acessar apenas dados dos bots vinculados à sua conta Discord, em não tentar contornar controles de acesso e em manter sigilo das credenciais de API geradas.",
+        "O acesso ao painel depende da propriedade do bot registrada pela integração oficial. Condições comerciais não descritas neste site devem ser tratadas no servidor oficial da Zyra Applications.",
+      ] },
+    ],
+  },
+};
+
 export function Legal({ kind }: { kind: "privacidade" | "termos" }) {
+  const { titulo, secoes } = LEGAL[kind];
+  usePageTitle(titulo);
+
   return <Public><section className="sec tight"><div className="wrap narrow legal">
-    <div className="state">Modelo inicial. Revise com assessoria jurídica antes de publicar.</div>
-    {kind === "privacidade" ? <>
-      <h1 style={{ fontSize: "2.6rem" }}>Política de Privacidade</h1>
-      <h3>Dados que coletamos</h3><p>Ao entrar com Discord, guardamos seu ID, nome de usuário, nome global, avatar e as datas de primeiro e último acesso. Não guardamos tokens de acesso do Discord.</p>
-      <p>Das vendas recebidas do Bot Manager guardamos apenas o necessário para gestão: ID, nome e ícone do cliente (quando enviados), produto, valores, método de pagamento, status e datas.</p>
-      <h3>Como usamos</h3><p>Para autenticar você, identificar quais bots estão vinculados à sua conta e exibir estatísticas e histórico de vendas.</p>
-      <h3>Seus direitos</h3><p>Você pode solicitar acesso, correção ou exclusão dos seus dados pelo servidor oficial no Discord, respeitadas as obrigações legais de guarda.</p>
-    </> : <>
-      <h1 style={{ fontSize: "2.6rem" }}>Termos de Uso</h1>
-      <p style={{ marginTop: 20 }}>Ao usar o site você concorda em acessar apenas dados dos bots vinculados à sua conta Discord, em não tentar contornar controles de acesso e em manter sigilo das credenciais de API geradas.</p>
-      <p>O acesso ao painel depende da propriedade do bot registrada pela integração oficial. Condições comerciais não descritas neste site devem ser tratadas no servidor oficial da Zyra Applications.</p>
-    </>}
+    {MOSTRAR_AVISO_MODELO && <div className="state">Modelo inicial. Revise com assessoria jurídica antes de publicar.</div>}
+    <h1 style={{ fontSize: "2.6rem" }}>{titulo}</h1>
+    {secoes.map((sec, si) => <div key={sec.h ?? si}>
+      {sec.h && <h3>{sec.h}</h3>}
+      {sec.p.map((texto, pi) =>
+        <p key={pi} style={!sec.h && si === 0 && pi === 0 ? { marginTop: 20 } : undefined}>{texto}</p>)}
+    </div>)}
   </div></section></Public>;
 }
