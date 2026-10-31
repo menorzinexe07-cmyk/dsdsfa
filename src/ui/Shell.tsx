@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, avatarUrl, useApi } from "./api";
 import { INVITE } from "../content";
 import { Async } from "./kit";
+import { Intro } from "./Intro";
 
 export const Logo = () => <a href="/" className="logo"><span>Z</span>Zyra Apps</a>;
 
@@ -33,6 +34,7 @@ export function Public({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   useSiteEffects();
   return <div className="site">
+    <Intro />
     <header className="nav"><div className="wrap">
       <Logo />
       <button className="burger btn sm" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Abrir menu">Menu</button>
@@ -43,12 +45,20 @@ export function Public({ children }: { children: ReactNode }) {
         <a className="btn sm solid" href={INVITE} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a>
       </nav></div></header>
     <main>{children}</main>
-    <footer className="foot"><div className="wrap cols">
-      <div><Logo /><p>Plataforma da Zyra Applications para apresentar, vender e gerenciar o ZyraSallers.</p></div>
-      <div><b>Produto</b><a href="/zyrasallers">ZyraSallers</a><a href="/precos">Preços</a><a href="/faq">FAQ</a></div>
-      <div><b>Conta</b><a href="/login">Entrar com Discord</a><a href="/dashboard">Dashboard</a></div>
-      <div><b>Contato e legal</b><a href={INVITE} target="_blank" rel="noreferrer">Servidor no Discord</a><a href="/privacidade">Privacidade</a><a href="/termos">Termos de uso</a></div>
-    </div><div className="wrap copy">© {new Date().getFullYear()} Zyra Applications</div></footer>
+    <footer className="foot">
+      <div className="wrap cols">
+        <div><Logo /><p>Plataforma da Zyra Applications para apresentar, vender e gerenciar o ZyraSallers.</p>
+          <a className="btn sm" href={INVITE} target="_blank" rel="noreferrer">Entrar no servidor</a></div>
+        <div><b>Produto</b><a href="/zyrasallers">ZyraSallers</a><a href="/zyrasallers#funcionalidades">Funcionalidades</a><a href="/precos">Preços</a><a href="/faq">FAQ</a></div>
+        <div><b>Conta</b><a href="/login">Entrar com Discord</a><a href="/dashboard">Dashboard</a></div>
+        <div><b>Contato e legal</b><a href={INVITE} target="_blank" rel="noreferrer">Servidor no Discord</a><a href="/privacidade">Privacidade</a><a href="/termos">Termos de uso</a></div>
+      </div>
+      <div className="wrap copy">
+        <span>© {new Date().getFullYear()} Zyra Applications. Todos os direitos reservados.</span>
+        <span className="copy-links"><a href="/privacidade">Privacidade</a><a href="/termos">Termos</a></span>
+      </div>
+      <div className="foot-mark" aria-hidden="true">ZYRASALLERS</div>
+    </footer>
   </div>;
 }
 
