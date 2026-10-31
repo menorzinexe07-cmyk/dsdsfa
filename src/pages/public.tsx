@@ -199,7 +199,7 @@ function QrExemplo({ seed }: { seed: number }) {
 function Mensagem({ children, efemera, onDispensar }: { children: ReactNode; efemera?: boolean; onDispensar?: () => void }) {
   return (
     <div className="zs-msg">
-      <div className="zs-av" aria-hidden="true">Z</div>
+      <img className="zs-av" src="/zyra.png" alt="" aria-hidden="true" />
       <div className="zs-msg-corpo">
         <div className="zs-msg-topo">
           <b>ZyraSallers</b><span className="zs-tag">BOT</span>
@@ -419,7 +419,7 @@ const DEMO_CSS = `
 .zs-janela-rodape{padding:10px 16px 14px;font-size:12px;color:var(--mut)}
 
 .zs-msg{display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px;padding:6px 0 10px}
-.zs-av{width:40px;height:40px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;font-weight:800}
+.zs-av{width:40px;height:40px;border-radius:50%;background:#fff;object-fit:cover;display:block}
 .zs-msg-topo{display:flex;align-items:center;gap:6px;margin-bottom:4px}
 .zs-msg-topo b{color:#fff;font-weight:600}
 .zs-msg-topo time{font-size:12px;color:var(--mut);margin-left:4px}
@@ -553,7 +553,7 @@ function PhoneMock() {
     <div className="hm-phone" role="img" aria-label="Exemplo demonstrativo de notificação de venda no celular">
       <i className="hm-notch" />
       <div className="hm-screen">
-        <div className="hm-notif"><span className="hm-ic">Z</span>
+        <div className="hm-notif"><img className="hm-ic" src="/zyra.png" alt="" />
           <div><b>ZyraSallers</b><p>Venda aprovada: R$ 5,00</p></div><time>agora</time></div>
         <div className="hm-balance"><small>Saldo disponível</small><strong>R$ 1.240,00</strong></div>
         <div className="hm-listh">Últimas vendas</div>
