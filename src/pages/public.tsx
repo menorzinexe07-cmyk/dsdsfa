@@ -486,7 +486,7 @@ const DEMO_CSS = `
 
 // ───────────────────────── FAQ ─────────────────────────
 
-function FaqList({ items, search }: { items: FaqItem[]; search?: boolean }) {
+function FaqList({ items, search, numbered }: { items: FaqItem[]; search?: boolean; numbered?: boolean }) {
   const [q, setQ] = useState("");
   const indexado = useMemo(() => items.map((item) => ({ item, texto: normalizar(`${item.q} ${item.a}`) })), [items]);
   const lista = useMemo(() => {
@@ -497,7 +497,7 @@ function FaqList({ items, search }: { items: FaqItem[]; search?: boolean }) {
   return <div className="faqlist">
     {search && <input className="input" type="search" placeholder="Pesquisar nas perguntas" aria-label="Pesquisar nas perguntas"
       value={q} onChange={(e) => setQ(e.target.value)} />}
-    {lista.map(({ item }) => <details key={item.q} className="faq"><summary>{item.q}</summary><p>{item.a}</p></details>)}
+    {lista.map(({ item }, i) => <details key={item.q} className="faq"><summary><span>{numbered && <em className="n">{String(i + 1).padStart(2, "0")}</em>}{item.q}</span></summary><p>{item.a}</p></details>)}
     {!lista.length && <p className="muted" role="status">Nenhuma pergunta encontrada.</p>}
   </div>;
 }
@@ -538,6 +538,81 @@ function Hero({ pill, title, lead, actions, note }: {
 const PageHead = ({ title, children, narrow }: { title: string; children?: ReactNode; narrow?: boolean }) =>
   <section className="pagehead"><div className={narrow ? "wrap narrow" : "wrap"}><h1>{title}</h1>{children}</div></section>;
 
+// ───────────────────────── mockups da Home (dados fictícios, sempre marcados como exemplo) ─────────────────────────
+
+const BARRAS_EXEMPLO = [32, 46, 38, 62, 52, 78, 70, 92];
+const VENDAS_EXEMPLO = [
+  { n: "Marina", p: "Plano Mensal", v: "R$ 5,00", t: "agora" },
+  { n: "Lucas", p: "Plano Mensal", v: "R$ 5,00", t: "há 12 min" },
+  { n: "Ana", p: "Clone de servidor", v: "R$ 5,00", t: "há 41 min" },
+  { n: "Rafael", p: "Plano Mensal", v: "R$ 5,00", t: "há 2 h" },
+];
+
+function PhoneMock() {
+  return <div className="hm-phone-wrap" data-reveal>
+    <div className="hm-phone" role="img" aria-label="Exemplo demonstrativo de notificação de venda no celular">
+      <i className="hm-notch" />
+      <div className="hm-screen">
+        <div className="hm-notif"><span className="hm-ic">Z</span>
+          <div><b>ZyraSallers</b><p>Venda aprovada: R$ 5,00</p></div><time>agora</time></div>
+        <div className="hm-balance"><small>Saldo disponível</small><strong>R$ 1.240,00</strong></div>
+        <div className="hm-listh">Últimas vendas</div>
+        <ul className="hm-sales">
+          {VENDAS_EXEMPLO.map((v) => <li key={v.n}>
+            <span className="hm-av">{v.n[0]}</span>
+            <div><b>{v.n}</b><small>{v.p} · {v.t}</small></div>
+            <em>{v.v}</em>
+          </li>)}
+        </ul>
+      </div>
+    </div>
+    <span className="hm-fake">Exemplo com dados fictícios</span>
+  </div>;
+}
+
+function PixMock() {
+  return <div className="hm-card" role="img" aria-label="Exemplo demonstrativo de pagamento PIX aprovado">
+    <div className="hm-card-head"><b>Pague com PIX</b><span className="hm-ok">Aprovado</span></div>
+    <div className="hm-pixrow">
+      <QrExemplo seed={2026} />
+      <div className="hm-kv">
+        <div><span>Valor</span><b>R$ 5,00</b></div>
+        <div><span>Pedido</span><b>#1042</b></div>
+        <div><span>Status</span><b>Confirmado</b></div>
+      </div>
+    </div>
+    <div className="hm-deliver"><i aria-hidden="true">✓</i> Entrega realizada por mensagem direta</div>
+    <span className="hm-fake">Exemplo com dados fictícios</span>
+  </div>;
+}
+
+function DashMock() {
+  return <div className="hm-card" role="img" aria-label="Exemplo demonstrativo do dashboard de vendas">
+    <div className="hm-card-head"><b>Visão geral</b><span className="hm-soft">Exemplo</span></div>
+    <div className="hm-kpis">
+      <div><span>Faturamento</span><b>R$ 1.240</b></div>
+      <div><span>Vendas</span><b>62</b></div>
+      <div><span>Clientes</span><b>48</b></div>
+    </div>
+    <div className="hm-bars">{BARRAS_EXEMPLO.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div>
+    <span className="hm-fake">Exemplo com dados fictícios</span>
+  </div>;
+}
+
+function Bloco({ tag, titulo, texto, itens, reverse, children }: {
+  tag: string; titulo: string; texto: string; itens: string[]; reverse?: boolean; children: ReactNode;
+}) {
+  return <div className={`hm-row${reverse ? " rev" : ""}`} data-reveal>
+    <div className="hm-copy">
+      <span className="hm-tag">{tag}</span>
+      <h3>{titulo}</h3>
+      <p>{texto}</p>
+      <ul>{itens.map((i) => <li key={i}>{i}</li>)}</ul>
+    </div>
+    <div className="hm-show">{children}</div>
+  </div>;
+}
+
 // ───────────────────────── páginas ─────────────────────────
 
 const PASSOS = [
@@ -548,40 +623,72 @@ const PASSOS = [
 
 export function Home() {
   const s = useSettings();
-  const faqResumo = useMemo(() => s.faq.slice(0, 5), [s.faq]);
+  usePageTitle("Venda pelo Discord");
+  const faqResumo = useMemo(() => s.faq.slice(0, 6), [s.faq]);
+  const recursos = useMemo(() => FEATURES.reduce((a, f) => a + f.items.length, 0), []);
 
   return <Public>
-    <Hero
-      pill="Bot brasileiro de vendas para Discord"
-      title={s.title ?? <>Automatize suas vendas <em>dentro do Discord.</em></>}
-      lead={s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}
-      actions={<>
-        <a className="btn solid lg" href="/zyrasallers">Conhecer o ZyraSallers</a>
-        <a className="btn lg" href="/zyrasallers#funcionalidades">Ver funcionalidades</a>
-      </>}
-      note={<>A partir de <b>{s.price}</b></>}
-    />
+    <section className="hm-hero"><div className="wrap">
+      <span className="pill"><i aria-hidden="true" /> Bot brasileiro de vendas para Discord</span>
+      <h1>{s.title ?? <>Venda pelo Discord, <em>no automático.</em></>}</h1>
+      <p className="lead">{s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}</p>
+      <div className="actions">
+        <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
+        <a className="btn lg" href="#recursos">Ver recursos</a>
+      </div>
+      <ul className="hm-stats">
+        <li><b>{s.price}</b><span>preço informado</span></li>
+        <li><b>{recursos} recursos</b><span>para vender e administrar</span></li>
+        <li><b>{GATEWAYS.length} modos</b><span>de receber pagamentos</span></li>
+      </ul>
+      <PhoneMock />
+    </div></section>
 
     <Marquee />
 
-    <section className="sec"><div className="wrap">
-      <div className="sec-head" data-reveal>
-        <h2>Tudo que o seu servidor precisa para vender</h2>
-        <p>Pedidos, pagamentos, clientes, divulgação e administração em um único bot.</p>
+    <section className="sec" id="recursos"><div className="wrap">
+      <div className="sec-head center" data-reveal>
+        <h2>O bot cuida das suas vendas do começo ao fim</h2>
+        <p>Pedidos, pagamentos, clientes e administração em um único bot, direto no seu servidor Discord.</p>
+      </div>
+
+      <Bloco tag="01 · Loja e vendas" titulo="Uma loja dentro do seu servidor"
+        texto="O cliente escolhe o produto, abre o carrinho e paga sem sair do Discord. Teste ao lado, do jeito que ele vê."
+        itens={["Painel de produto com botão de compra", "Carrinho aberto na hora", "Entrega depois da aprovação do pagamento"]}>
+        <DemoPainel />
+      </Bloco>
+
+      <Bloco reverse tag="02 · Pagamentos" titulo="Receba pelo método que você já usa"
+        texto="Gateways automáticos, integração via IMAP e modo manual. O pedido é confirmado e entregue sem você precisar abrir nada."
+        itens={["Pix com QR Code e copia e cola", "Confirmação automática nos gateways compatíveis", "Modo manual para quem prefere conferir"]}>
+        <PixMock />
+      </Bloco>
+
+      <Bloco tag="03 · Dashboard" titulo="Acompanhe tudo em um só lugar"
+        texto="Entre com o Discord e veja estatísticas, clientes e o histórico de vendas de cada bot."
+        itens={["Faturamento e número de vendas", "Lista de clientes e pedidos", "Um painel para cada bot vinculado à sua conta"]}>
+        <DashMock />
+      </Bloco>
+    </div></section>
+
+    <section className="sec rule"><div className="wrap">
+      <div className="sec-head center" data-reveal>
+        <h2>Também incluído</h2>
+        <p>Tudo que o seu servidor precisa para vender, divulgar e se manter organizado.</p>
       </div>
       <Features />
     </div></section>
 
     <section className="sec rule" id="pagamentos"><div className="wrap">
-      <div className="sec-head" data-reveal>
-        <h2>Receba pelo método que você já usa</h2>
+      <div className="sec-head center" data-reveal>
+        <h2>Bancos e gateways de pagamento</h2>
         <p>Gateways automáticos, integração via IMAP e modo manual.</p>
       </div>
       <Gateways />
     </div></section>
 
     <section className="sec rule"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Do servidor ao painel em três passos</h2></div>
+      <div className="sec-head center" data-reveal><h2>Do servidor ao painel em três passos</h2></div>
       <div className="steps">
         {PASSOS.map((p, i) => <div key={p.t} data-reveal className={`step spot${i ? ` d${i}` : ""}`}>
           <h3>{p.t}</h3><p>{p.d}</p>
@@ -592,9 +699,9 @@ export function Home() {
     <section className="sec tight"><div className="wrap"><PriceBox price={s.price} invite={s.invite} /></div></section>
 
     <section className="sec rule"><div className="wrap narrow">
-      <div className="sec-head" data-reveal><h2>Perguntas frequentes</h2></div>
-      <FaqList items={faqResumo} />
-      <p style={{ marginTop: 24 }}><a href="/faq">Ver todas as perguntas</a></p>
+      <div className="sec-head center" data-reveal><h2>Antes de começar</h2><p>As dúvidas mais comuns sobre o ZyraSallers.</p></div>
+      <FaqList items={faqResumo} numbered />
+      <p style={{ marginTop: 24, textAlign: "center" }}><a href="/faq">Ver todas as perguntas</a></p>
     </div></section>
 
     <section className="cta"><div className="wrap">
