@@ -1,0 +1,189 @@
+/* Painel (/dashboard e /admin).
+   O CSS do site público removeu os estilos destes componentes; aqui eles voltam, todos
+   escopados em .dash para não afetar as páginas públicas. */
+
+.dash {
+  --p-bg: #000;
+  --p-panel: #0a0a0b;
+  --p-panel2: #111113;
+  --p-line: rgba(255, 255, 255, 0.09);
+  --p-line2: rgba(255, 255, 255, 0.16);
+  --p-tx: #f4f4f5;
+  --p-mut: #a1a1aa;
+  --p-dim: #71717a;
+  --p-ok: #4ade80;
+  --p-warn: #fbbf24;
+  --p-bad: #f87171;
+  --p-r: 16px;
+}
+
+/* ───── estrutura ───── */
+.dash { grid-template-columns: 252px minmax(0, 1fr); }
+.dash > aside { padding: 22px 14px; background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(10px); }
+.dash > aside > .logo { padding: 0 10px; }
+.dash > aside nav { margin-top: 26px; }
+.dash > aside nav a { padding: 9px 12px; }
+.dash > aside nav a:focus-visible, .dash .btn:focus-visible, .dash .linkbtn:focus-visible,
+.dash .tabs button:focus-visible, .dash th.sort:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.dash > aside nav small { padding: 4px 12px 8px; letter-spacing: 0; text-transform: none; font-size: 0.8rem; font-weight: 600; color: var(--p-dim); }
+.dash > aside nav hr { margin: 16px 0 10px; }
+.dash .dtop { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px); background: rgba(0, 0, 0, 0.78); }
+.dash .user span { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash .dbody { width: 100%; max-width: 1280px; margin-inline: auto; }
+.dash .dbody > * + * { margin-top: 0; }
+.dash .dbody h1 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); line-height: 1.1; margin-bottom: 4px; }
+.dash .dbody h2 { font-size: 1.15rem; margin: 32px 0 14px; line-height: 1.2; }
+.dash .dbody h3 { font-size: 1rem; line-height: 1.25; letter-spacing: -0.015em; }
+.dash .dbody > p.muted, .dash .dbody .muted { color: var(--p-dim); font-size: 0.92rem; }
+.dash .dbody > p.muted { margin-top: 4px; }
+.dash .dfoot { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--p-line); }
+
+/* ───── utilitários de layout ───── */
+.dash .row { display: flex; align-items: center; gap: 12px; }
+.dash .row.between { justify-content: space-between; flex-wrap: wrap; }
+.dash .row.wrapx { flex-wrap: wrap; }
+.dash .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.dash .grid3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+.dash .grid2 > .span2, .dash .span2 { grid-column: 1 / -1; }
+@media (max-width: 960px) { .dash .grid2 { grid-template-columns: 1fr; } }
+
+/* ───── cartões ───── */
+.dash .card {
+  display: block; min-width: 0; padding: 22px; border-radius: var(--p-r);
+  border: 1px solid var(--p-line); background: var(--p-panel); color: var(--p-mut);
+}
+.dash .card > h3 { color: var(--p-tx); margin-bottom: 14px; }
+.dash .card.form { display: grid; gap: 16px; align-content: start; }
+.dash .card.form > h3, .dash .card.form > h2 { margin: 0; }
+.dash a.card { color: inherit; }
+.dash .card.clickable { transition: border-color 0.15s, background 0.15s; cursor: pointer; }
+.dash .card.clickable:hover { border-color: var(--p-line2); background: var(--p-panel2); }
+.dash .card.bot { display: grid; gap: 18px; align-content: start; }
+.dash .card.bot h3 { margin: 0; color: var(--p-tx); font-size: 1.05rem; }
+.dash .card.bot small { color: var(--p-dim); font-size: 0.8rem; word-break: break-all; }
+.dash .card.bot dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; margin: 0; align-items: center; }
+.dash .card.bot dt { color: var(--p-dim); font-size: 0.86rem; }
+.dash .card.bot dd { margin: 0; color: var(--p-tx); font-size: 0.92rem; text-align: right; }
+.dash .card.bot .btn { width: 100%; }
+.dash .bav { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; flex: none; border: 1px solid var(--p-line2); }
+.dash .bav.ph { display: grid; place-items: center; background: #1a1a1d; color: #fff; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; }
+
+/* estado vazio de página inteira */
+.dash .empty { display: grid; justify-items: center; gap: 12px; text-align: center; max-width: 520px; margin: clamp(32px, 8vh, 96px) auto; padding: 36px 28px; border-radius: 20px; border: 1px dashed var(--p-line2); background: var(--p-panel); }
+.dash .empty.card { margin-top: 24px; }
+.dash .empty h2 { margin: 0; color: var(--p-tx); font-size: 1.3rem; }
+.dash .empty p { margin: 0; color: var(--p-mut); }
+
+/* ───── indicadores ───── */
+.dash .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-block: 18px 6px; }
+.dash .kpis.compact { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.dash .kpi { padding: 18px 20px; border-radius: 14px; min-width: 0; }
+.dash .kpi b { font-size: clamp(1.35rem, 2.2vw, 1.8rem); overflow-wrap: anywhere; }
+.dash .kpis.compact .kpi b { font-size: 1.1rem; }
+.dash .kpi span { font-size: 0.84rem; }
+
+/* ───── estados ───── */
+.dash .state { margin: 14px 0; padding: 14px 18px; border-radius: 14px; font-size: 0.92rem; line-height: 1.5; }
+.dash .state.err { border-color: rgba(248, 113, 113, 0.45); color: #fca5a5; background: rgba(248, 113, 113, 0.06); }
+.dash .state.ok { border-color: rgba(74, 222, 128, 0.4); color: #bbf7d0; background: rgba(74, 222, 128, 0.06); display: grid; justify-items: start; }
+.dash .card .state { margin: 0; }
+.dash .secret { display: block; width: 100%; margin: 8px 0; padding: 12px 14px; border-radius: 10px; background: #000; border: 1px solid var(--p-line2); color: #fff; font-size: 0.9rem; word-break: break-all; user-select: all; }
+.dash .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--p-line2); border-top-color: #fff; animation: zs-gira 0.8s linear infinite; display: inline-block; }
+@keyframes zs-gira { to { transform: rotate(360deg); } }
+.dash .skels { margin-top: 18px; }
+
+/* ───── listas simples ───── */
+.dash ul.plain { display: grid; gap: 0; }
+.dash ul.plain li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--p-line); color: var(--p-mut); font-size: 0.93rem; line-height: 1.4; }
+.dash ul.plain li:last-child { border-bottom: 0; padding-bottom: 0; }
+.dash ul.plain li:first-child { padding-top: 0; }
+.dash ul.plain li b { color: var(--p-tx); font-weight: 600; font-variant-numeric: tabular-nums; }
+.dash ul.plain li small { color: var(--p-dim); }
+.dash .whois { display: inline-flex; align-items: center; gap: 10px; min-width: 0; color: var(--p-tx); }
+.dash .kv { display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; margin: 0; }
+.dash .kv dt { color: var(--p-dim); font-size: 0.88rem; }
+.dash .kv dd { margin: 0; color: var(--p-tx); font-size: 0.92rem; overflow-wrap: anywhere; }
+.dash pre { margin: 0; padding: 14px 16px; border-radius: 12px; background: #000; border: 1px solid var(--p-line2); color: #e4e4e7; font-size: 0.86rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+.dash .betatag { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--p-line2); color: #d4d4d8; font-size: 0.75rem; font-weight: 600; }
+
+/* ───── formulários ───── */
+.dash .dbody .input, .dash .dbody input:not([type="checkbox"]):not([type="radio"]), .dash .dbody select, .dash .dbody textarea {
+  width: 100%; height: 44px; margin: 0; padding: 0 14px; border-radius: 12px;
+  border: 1px solid var(--p-line2); background: var(--p-panel); color: #fff; font: inherit; font-size: 0.93rem;
+}
+.dash .dbody textarea { height: auto; min-height: 84px; padding: 12px 14px; resize: vertical; line-height: 1.5; }
+.dash .dbody select { padding-right: 34px; }
+.dash .dbody .input.auto, .dash .dbody select.auto, .dash .dbody .input.w.auto { width: auto; min-width: 0; }
+.dash .dbody input::placeholder, .dash .dbody textarea::placeholder { color: var(--p-dim); }
+.dash .dbody input:focus, .dash .dbody select:focus, .dash .dbody textarea:focus { outline: 2px solid #fff; outline-offset: 1px; }
+.dash .dbody label { display: grid; gap: 7px; color: var(--p-mut); font-size: 0.88rem; font-weight: 500; }
+.dash .dbody label small { color: var(--p-dim); font-weight: 400; line-height: 1.45; }
+.dash .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 18px 0; }
+.dash .filters > input:first-child:nth-last-child(n + 4) { grid-column: span 2; }
+@media (max-width: 560px) { .dash .filters > input:first-child:nth-last-child(n + 4) { grid-column: auto; } }
+.dash .faqedit { display: grid; gap: 8px; padding: 14px; border-radius: 12px; border: 1px solid var(--p-line); background: #050506; }
+.dash .faqedit .btn { justify-self: start; }
+.dash .btn.sm { height: 36px; padding: 0 16px; font-size: 0.86rem; }
+.dash .btn.danger { color: #fca5a5; border-color: rgba(248, 113, 113, 0.4); }
+.dash .btn.danger:hover { background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.6); }
+
+/* ───── abas do admin ───── */
+.dash .tabs { display: flex; gap: 4px; margin: 22px 0 20px; padding: 4px; border-radius: 14px; border: 1px solid var(--p-line); background: var(--p-panel); overflow-x: auto; scrollbar-width: thin; }
+.dash .tabs button { flex: none; height: 36px; padding: 0 16px; border: 0; border-radius: 10px; background: transparent; color: var(--p-mut); font-size: 0.9rem; font-weight: 500; white-space: nowrap; transition: background 0.15s, color 0.15s; }
+.dash .tabs button:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+.dash .tabs button.on { background: #fff; color: #000; font-weight: 600; }
+
+/* ───── tabelas ───── */
+.dash .tablewrap { margin-top: 14px; overflow-x: auto; border-radius: var(--p-r); border: 1px solid var(--p-line); background: var(--p-panel); }
+.dash .dbody table.rt { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 0.9rem; }
+.dash .dbody table.rt thead th { position: sticky; top: 0; padding: 12px 16px; text-align: left; white-space: nowrap; color: var(--p-dim); background: #0d0d0f; font-size: 0.8rem; font-weight: 600; letter-spacing: 0; text-transform: none; border-bottom: 1px solid var(--p-line2); }
+.dash .dbody table.rt td { padding: 13px 16px; border-bottom: 1px solid var(--p-line); color: #d4d4d8; vertical-align: middle; }
+.dash .dbody table.rt tbody tr:last-child td { border-bottom: 0; }
+.dash .dbody table.rt td.num, .dash .dbody table.rt th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dash .dbody table.rt td.nowrap { white-space: nowrap; }
+.dash .dbody table.rt td.clip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash .dbody table.rt td.act { text-align: right; white-space: nowrap; }
+.dash .dbody table.rt td select { width: auto; height: 34px; padding: 0 30px 0 12px; font-size: 0.86rem; }
+.dash th.sort { cursor: pointer; user-select: none; transition: color 0.15s; }
+.dash th.sort:hover { color: #fff; }
+.dash .dbody td code { white-space: nowrap; }
+.dash .dbody td a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.dash .pager { margin-top: 16px; }
+
+/* ───── gráficos ───── */
+.dash .chart { padding: 4px 0 0; }
+.dash .chart rect { fill: #e4e4e7; opacity: 0.85; }
+.dash .chart.line polyline { stroke: #e4e4e7; }
+
+/* ───── celular ───── */
+@media (max-width: 860px) {
+  .dash { grid-template-columns: minmax(0, 1fr); }
+  .dash > aside { position: sticky; top: 0; z-index: 30; height: auto; max-height: none; overflow: visible; padding: 10px 14px 0; border-right: 0; border-bottom: 1px solid var(--p-line); background: rgba(0, 0, 0, 0.92); }
+  .dash > aside nav { flex-direction: row; flex-wrap: nowrap; gap: 4px; margin: 10px -14px 0; padding: 0 14px 10px; overflow-x: auto; scrollbar-width: none; }
+  .dash > aside nav::-webkit-scrollbar { display: none; }
+  .dash > aside nav a { flex: none; white-space: nowrap; }
+  .dash > aside nav hr, .dash > aside nav small { display: none; }
+  .dash .dtop { position: static; min-height: 56px; }
+  .dash .user span { display: none; }
+}
+@media (max-width: 720px) {
+  /* tabelas viram lista de cartões, usando o data-label de cada célula */
+  .dash .tablewrap { overflow: visible; border: 0; background: none; }
+  .dash .dbody table.rt, .dash .dbody table.rt tbody { display: block; min-width: 0; }
+  .dash .dbody table.rt thead { display: none; }
+  .dash .dbody table.rt tr { display: grid; gap: 8px; margin-bottom: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--p-line); background: var(--p-panel); }
+  .dash .dbody table.rt td, .dash .dbody table.rt td.num { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0; border: 0; text-align: right; max-width: none; white-space: normal; overflow: visible; }
+  .dash .dbody table.rt td::before { content: attr(data-label); flex: none; color: var(--p-dim); font-size: 0.8rem; text-align: left; }
+  .dash .dbody table.rt td:not([data-label])::before { content: none; }
+  .dash .dbody table.rt td.act { justify-content: flex-end; }
+  .dash .dbody table.rt td.clip { white-space: normal; overflow-wrap: anywhere; }
+  .dash .dbody table.rt tbody tr:hover td { background: none; }
+}
+@media (prefers-reduced-motion: reduce) { .dash .spin, .dash .skel, .dash .pl-bar { animation: none; } }
+
+/* selos extras (admin) */
+.dash .badge.confirmed, .dash .badge.ok { color: var(--p-ok); border-color: rgba(74, 222, 128, 0.35); }
+.dash .badge.revoked, .dash .badge.error { color: var(--p-bad); border-color: rgba(248, 113, 113, 0.35); }
+.dash .badge { font-size: 0.76rem; }
+.dash .kpis.compact .kpi b { overflow-wrap: normal; }
+@media (min-width: 1100px) { .dash .kpis.compact { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } }
