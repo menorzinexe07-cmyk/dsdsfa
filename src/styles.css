@@ -535,3 +535,65 @@ body h1, body h2, body h3 { text-wrap: balance; }
 body .cta { padding-block: clamp(72px, 10vw, 120px) clamp(32px, 4vw, 56px); }
 body .cta h2 { font-size: clamp(2.2rem, 5.5vw, 4rem); max-width: 18ch; }
 .foot-mark { -webkit-text-stroke: 1px rgba(255, 255, 255, 0.2); }
+
+
+/* ───── movimento e contraste ───── */
+/* título palavra por palavra */
+.w { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.04em 0.14em; margin: 0 -0.04em -0.14em; }
+.w > span { display: inline-block; transform: translateY(112%); animation: zs-letra 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.hm-intro { display: grid; justify-items: center; width: 100%; }
+.hm-intro > :not(h1) { animation: zs-sobe 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--d, 0) * 1s); }
+.hm-intro .hm-stats li b { font-variant-numeric: tabular-nums; }
+@keyframes zs-sobe { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* painel que se endireita ao rolar */
+.hm-stage-in { transform-origin: 50% 0; }
+
+/* luz discreta no topo */
+.hm-hero { position: relative; }
+.hm-hero::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 640px; pointer-events: none;
+  background: radial-gradient(55% 60% at 50% 0%, rgba(255, 255, 255, 0.075), transparent 72%);
+}
+.hm-hero > .wrap { position: relative; }
+
+/* menu que encolhe ao rolar */
+body header.nav .wrap { transition: min-height 0.25s ease; }
+html[data-rolou] body header.nav { background: rgba(0, 0, 0, 0.92); }
+html[data-rolou] body header.nav .wrap { min-height: 60px; }
+
+/* botões */
+body .btn { position: relative; overflow: hidden; }
+body .btn:hover { transform: translateY(-1px); }
+body .btn:active { transform: scale(0.98); }
+body .btn.solid::after, body .btn.ink::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-130%);
+  background: linear-gradient(100deg, transparent 32%, rgba(0, 0, 0, 0.14) 50%, transparent 68%);
+}
+body .btn.solid:hover::after, body .btn.ink:hover::after { animation: zs-brilho 0.8s ease; }
+@keyframes zs-brilho { to { transform: translateX(130%); } }
+
+/* faixa de funcionalidades com bordas suaves */
+body .marquee { -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); border-block: 0; }
+
+/* seções mais marcadas */
+body h2 { font-size: clamp(2rem, 4.6vw, 3.5rem); }
+body .sec-head p { font-size: clamp(1rem, 1.6vw, 1.15rem); }
+body .sec.band { background: #060607; border-block: 1px solid rgba(255, 255, 255, 0.07); }
+
+/* preço: bloco claro, o grande contraste da página */
+body .pricebox { background: #fff; border-color: #fff; color: #52525b; }
+body .pricebox h2 { color: #000; }
+body .pricebox .big { color: #000; }
+body .pricebox p { color: #52525b; }
+body .pricebox .btn.ink { background: #000; border-color: #000; color: #fff; }
+body .pricebox .btn.ink:hover { background: #18181b; border-color: #18181b; }
+body .pricebox .btn.ink::after { background: linear-gradient(100deg, transparent 32%, rgba(255, 255, 255, 0.2) 50%, transparent 68%); }
+body .pricebox .btn:not(.ink) { color: #000 !important; border-color: #d4d4d8 !important; }
+body .pricebox .btn:not(.ink):hover { background: #f4f4f5; border-color: #a1a1aa !important; }
+
+/* reduzir movimento: tudo aparece parado, sem esconder nada */
+@media (prefers-reduced-motion: reduce) {
+  .w > span { transform: none; }
+  .hm-stage-in { transform: none !important; }
+}
