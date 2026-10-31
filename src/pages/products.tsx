@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 type Delivery = 'automatic' | 'manual'
 type Product = {
   id: string; name: string; description: string
-  delivery_type: Delivery; banner_url: string
+  delivery_type: Delivery; banner_url: string | null
   sync_status: 'pending' | 'synced'; created_at: string
 }
 const DELIVERY = {
@@ -119,7 +119,7 @@ export default function ProductsPage({ botId }: { botId: string }) {
         <ul className="pr-grid">
           {shown.map(p => (
             <li key={p.id}>
-              <Card name={p.name} description={p.description} delivery={p.delivery_type} banner={p.banner_url}
+              <Card name={p.name} description={p.description} delivery={p.delivery_type} banner={p.banner_url ?? ''}
                 pending={p.sync_status === 'pending'} date={new Date(p.created_at).toLocaleDateString('pt-BR')} />
             </li>
           ))}
@@ -164,13 +164,13 @@ function CreateModal({ base, onClose, onCreated }: { base: string; onClose: () =
     if (!name.trim()) e.name = 'Informe o nome do produto.'
     if (!desc.trim()) e.description = 'Informe a descrição.'
     if (!delivery) e.delivery_type = 'Escolha como o produto será entregue.'
-    if (!file) e.banner = 'Envie o banner do produto.'
     setErrs(e)
     if (Object.values(e).some(Boolean)) return
     setBusy(true)
     const fd = new FormData()
     fd.set('name', name.trim()); fd.set('description', desc.trim())
-    fd.set('delivery_type', delivery); fd.set('banner', file!)
+    fd.set('delivery_type', delivery)
+    if (file) fd.set('banner', file) // opcional
     try {
       const r = await fetch(base, { method: 'POST', body: fd, credentials: 'include' })
       if (r.status === 201) return onCreated()
@@ -212,14 +212,15 @@ function CreateModal({ base, onClose, onCreated }: { base: string; onClose: () =
           </fieldset>
 
           <div className="pr-f">
-            <span>Banner <b>*</b></span>
+            <span>Banner <em className="opt">(opcional)</em></span>
             <label className={'pr-drop' + (file ? ' has' : '')}
               onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); pick(e.dataTransfer.files?.[0]) }}>
               <IImage />
               <em>{file ? file.name : 'Arraste uma imagem ou clique para escolher'}</em>
               <small className="hint">PNG, JPG, WEBP ou GIF · até 5 MB</small>
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => pick(e.target.files?.[0])} />
+              <input key={file ? 'f' : 'n'} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => pick(e.target.files?.[0])} />
             </label>
+            {file && <button type="button" className="pr-link" onClick={() => setFile(null)}>Remover imagem</button>}
             {errs.banner && <small>{errs.banner}</small>}
           </div>
 
@@ -310,6 +311,8 @@ const CSS = `
 .pr-drop:hover,.pr-drop.has{border-color:var(--ac)}
 .pr-drop em{font-style:normal;color:var(--tx);overflow-wrap:anywhere}.pr-drop .hint{font-size:.78rem}
 .pr-drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.pr-f>span em.opt{font-style:normal;font-weight:400;color:var(--mu)}
+.pr-link{justify-self:start;background:none;border:0;color:var(--mu);text-decoration:underline;font:inherit;font-size:.85rem;cursor:pointer;padding:0}
 .pr-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
 .pr-pv{background:var(--bg2);border-left:1px solid var(--bd);padding:28px 22px;display:grid;align-content:start;gap:12px}
 .pr-pv>p{margin:0;font-weight:600;font-size:.92rem;color:var(--mu)}
