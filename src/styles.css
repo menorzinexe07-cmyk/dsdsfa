@@ -597,3 +597,43 @@ body .pricebox .btn:not(.ink):hover { background: #f4f4f5; border-color: #a1a1aa
   .w > span { transform: none; }
   .hm-stage-in { transform: none !important; }
 }
+
+/* ───── /login ───── */
+body .lg { padding: clamp(40px, 7vw, 96px) 0 clamp(56px, 8vw, 110px); }
+body .lg-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 440px); gap: clamp(32px, 6vw, 96px); align-items: center; }
+body .lg-copy h1 { font-size: clamp(2.4rem, 5vw, 4rem); margin: 18px 0 0; }
+body .lg-copy .lead { margin-top: 18px; max-width: 46ch; font-size: 1.1rem; }
+body .lg-list { display: grid; gap: 18px; margin-top: 34px; padding: 0; list-style: none; }
+body .lg-list li { display: flex; align-items: flex-start; gap: 14px; }
+body .lg-list b { display: block; color: var(--t-tx); font-size: 1rem; }
+body .lg-list span:not(.lg-tick) { display: block; color: var(--t-dim); font-size: 0.93rem; line-height: 1.5; margin-top: 2px; }
+body .lg-tick { flex: none; display: grid; place-items: center; width: 26px; height: 26px; margin-top: 1px; border-radius: 50%; border: 1px solid var(--t-line2); color: var(--t-tx); background: var(--t-panel); }
+
+body .lg-card { display: grid; gap: 16px; justify-items: stretch; padding: clamp(26px, 4vw, 38px); border-radius: 26px; border: 1px solid var(--t-line2); background: var(--t-panel); box-shadow: 0 40px 90px -50px rgba(255, 255, 255, 0.18); }
+body .lg-mark { width: 56px; height: 56px; border-radius: 16px; justify-self: start; }
+body .lg-card h2 { font-size: 1.7rem; margin: 6px 0 0; line-height: 1.1; }
+body .lg-sub { margin: -6px 0 4px; color: var(--t-mut); }
+body .lg-card .state { margin: 0; }
+body .lg-card .btn.lg { width: 100%; justify-content: center; }
+body .lg-discord { display: inline-flex; align-items: center; gap: 12px; }
+body .lg-alt { justify-self: center; color: var(--t-mut); font-size: 0.92rem; }
+body .lg-alt:hover { color: var(--t-tx); }
+body .lg-me { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--t-line); background: var(--t-panel2); }
+body .lg-me img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid var(--t-line2); }
+body .lg-me b { display: block; color: var(--t-tx); }
+body .lg-me span { color: var(--t-dim); font-size: 0.85rem; }
+body .lg-perm { display: grid; gap: 10px; padding: 16px 18px; border-radius: 16px; border: 1px dashed var(--t-line2); }
+body .lg-perm > b { color: var(--t-tx); font-size: 0.9rem; }
+body .lg-perm ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+body .lg-perm li { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--t-line); color: var(--t-mut); font-size: 0.84rem; line-height: 1.2; }
+body .lg-perm li svg { color: #4ade80; }
+body .lg-perm small { color: var(--t-dim); font-size: 0.82rem; line-height: 1.5; }
+body .lg-foot { display: grid; gap: 8px; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--t-line); color: var(--t-dim); font-size: 0.85rem; line-height: 1.5; }
+body .lg-foot a { color: var(--t-mut); }
+body .lg-foot a:hover { color: var(--t-tx); }
+@media (max-width: 900px) {
+  body .lg-grid { grid-template-columns: minmax(0, 1fr); }
+  body .lg-card { order: -1; }
+  body .lg-copy { text-align: left; }
+  body .lg-list { margin-top: 24px; }
+}
