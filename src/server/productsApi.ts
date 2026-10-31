@@ -37,17 +37,19 @@ export async function createProduct(req: Request, botId: string) {
   if (!name || name.length > 80) errors.name = 'Informe o nome (até 80 caracteres).'
   if (!description || description.length > 1000) errors.description = 'Informe a descrição (até 1000 caracteres).'
   if (!['automatic', 'manual'].includes(delivery)) errors.delivery_type = 'Escolha Automático ou Manual.'
-  if (!(banner instanceof File) || banner.size === 0) errors.banner = 'Envie o banner.'
-  else if (!IMG_TYPES[banner.type]) errors.banner = 'Use PNG, JPG, WEBP ou GIF.'
-  else if (banner.size > MAX_BANNER) errors.banner = 'O banner deve ter no máximo 5 MB.'
+  const file = banner instanceof File && banner.size > 0 ? banner : null // banner é opcional
+  if (file && !IMG_TYPES[file.type]) errors.banner = 'Use PNG, JPG, WEBP ou GIF.'
+  else if (file && file.size > MAX_BANNER) errors.banner = 'O banner deve ter no máximo 5 MB.'
   if (Object.keys(errors).length) return json({ error: 'Dados inválidos.', errors }, 422)
 
-  const file = banner as File
-  const path = `${botId}/${crypto.randomUUID()}.${IMG_TYPES[file.type]}`
-  const up = await db.storage.from('product-banners')
-    .upload(path, await file.arrayBuffer(), { contentType: file.type })
-  if (up.error) return json({ error: 'Falha ao enviar o banner.' }, 500)
-  const banner_url = db.storage.from('product-banners').getPublicUrl(path).data.publicUrl
+  let banner_url: string | null = null
+  if (file) {
+    const path = `${botId}/${crypto.randomUUID()}.${IMG_TYPES[file.type]}`
+    const up = await db.storage.from('product-banners')
+      .upload(path, await file.arrayBuffer(), { contentType: file.type })
+    if (up.error) return json({ error: 'Falha ao enviar o banner.' }, 500)
+    banner_url = db.storage.from('product-banners').getPublicUrl(path).data.publicUrl
+  }
 
   // Fica "pending" até o bot buscar (GET .../products/pending) e confirmar via listproducts.
   const { data, error } = await db.from('bot_products')
@@ -70,7 +72,7 @@ export async function pendingProducts(req: Request, botId: string) {
 }
 
 // POST /api/v1/apps/:botId/listproducts → o bot envia TODOS os produtos do cliente
-// body: { products: [{ id, site_id?, name, description, delivery_type, banner_url? }] }
+// body: { products: [{ id, site_id?, name, description, delivery_type, banner_url? }] }  (banner_url opcional)
 export async function syncListProducts(req: Request, botId: string) {
   await requireCredential(req, botId)
   const body = await req.json().catch(() => null)
@@ -104,7 +106,7 @@ export async function syncListProducts(req: Request, botId: string) {
     if (ex) { await db.from('bot_products').update(row).eq('id', ex.id); updated++ }
     else {
       await db.from('bot_products').insert({
-        bot_id: botId, bot_product_id: botPid, banner_url: '', ...row,
+        bot_id: botId, bot_product_id: botPid, ...row,
       })
       created++
     }
