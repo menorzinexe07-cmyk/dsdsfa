@@ -15,36 +15,49 @@ a { text-decoration: none; }
 .wrap.narrow { width: min(780px, 100% - 48px); }
 
 /* ───── menu (por tag, pois as classes do Shell não foram vistas) ───── */
-header {
-  position: sticky; top: 0; z-index: 50;
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 28px;
-  padding: 14px clamp(16px, 4vw, 48px);
-  background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(14px);
+body header {
+  position: sticky; top: 0; z-index: 50; display: block; padding: 0;
+  background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
-header > a:first-child { font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em; color: #fff; }
-header nav { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 26px; }
-header nav a:not(.btn) { color: #a1a1aa; font-size: 0.95rem; transition: color 0.15s; }
-header nav a:not(.btn):hover { color: #fff; }
-header nav .btn { height: 40px; padding: 0 18px; font-size: 0.9rem; }
-header button { display: none; }
+body header > .wrap, body header > div {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 12px 32px; min-height: 72px;
+}
+body header > :not(.wrap):not(div) { margin-inline: clamp(16px, 4vw, 48px); }
+body header a:first-child {
+  display: inline-flex; align-items: center; gap: 10px; color: #fff;
+  font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em; white-space: nowrap;
+}
+body header nav { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px 28px; margin-left: auto; }
+body header nav a:not(.btn) { color: #a1a1aa; font-size: 0.95rem; white-space: nowrap; transition: color 0.15s; }
+body header nav a:not(.btn):hover { color: #fff; }
+body header nav .btn { height: 40px; padding: 0 20px; font-size: 0.9rem; white-space: nowrap; }
+body header nav .btn:first-of-type { margin-left: 4px; }
+/* botão "Menu": só no celular. O :not(#x) garante que vença o estilo de .btn */
+body header button:not(#x) { display: none !important; }
 @media (max-width: 900px) {
-  header button {
-    display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.16); background: transparent; color: #fff; font-weight: 600;
+  body header button:not(#x) {
+    display: inline-flex !important; align-items: center; height: 40px; padding: 0 18px;
+    border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.16); background: transparent;
+    color: #fff; font-weight: 600;
   }
-  header nav { width: 100%; flex-direction: column; align-items: flex-start; }
+  body header nav { width: 100%; flex-wrap: wrap; flex-direction: column; align-items: flex-start; margin: 0 0 14px; }
 }
 
 /* ───── rodapé ───── */
-footer {
-  margin-top: 40px; padding: 48px clamp(16px, 4vw, 48px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px 40px;
-  color: #71717a; font-size: 0.9rem; background: none;
+body footer {
+  margin-top: 40px; padding: 56px 0 40px; display: block; background: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08); color: #71717a; font-size: 0.9rem;
 }
-footer a { color: #a1a1aa; margin-right: 20px; }
-footer a:hover { color: #fff; }
+body footer > .wrap, body footer > div {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 28px 56px;
+}
+body footer > :not(.wrap):not(div) { margin-inline: clamp(16px, 4vw, 48px); }
+body footer nav, body footer ul { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+body footer a { color: #a1a1aa; margin: 0; }
+body footer a:hover { color: #fff; }
+body footer p { color: #71717a; max-width: 52ch; }
 
 /* ───── faixa que rola ───── */
 .marquee { overflow: hidden; }
