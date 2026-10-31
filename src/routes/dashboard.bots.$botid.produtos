@@ -1,5 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { BotPage } from '../pages/dashboard'
+import ProductsPage from '../pages/products'
+
 export const Route = createFileRoute('/dashboard/bots/$botId/produtos')({
-  component: () => { const { botId } = Route.useParams(); return <BotPage botId={botId} tab="produtos" /> },
+  component: function Produtos() {
+    const { botId } = Route.useParams()
+    return <ProductsPage botId={botId} />
+  },
 })
