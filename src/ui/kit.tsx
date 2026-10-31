@@ -29,7 +29,7 @@ export function Pager({ page, pageSize, total, onChange }: { page: number; pageS
 export const Badge = ({ s }: { s: string }) => {
   const map: Record<string, string> = { approved: "Aprovada", pending: "Pendente", canceled: "Cancelada", refunded: "Reembolsada",
     ativa: "Ativa", aguardando: "Aguardando eventos", sem_eventos_recentes: "Sem eventos recentes", active: "Ativa",
-    suspended: "Suspensa", expired: "Expirada" };
+    suspended: "Suspensa", expired: "Expirada", confirmed: "Confirmada", revoked: "Revogada", ok: "Processado", error: "Com erro" };
   return <span className={`badge ${s}`}>{map[s] ?? s}</span>;
 };
 
