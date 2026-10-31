@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import "./public-theme.css";
 import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
 import { Public } from "../ui/Shell";
 import { useApi } from "../ui/api";
