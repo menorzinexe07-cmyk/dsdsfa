@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import css from "../styles.css?url";
+import panelCss from "../panel.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,6 +18,7 @@ export const Route = createRootRoute({
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" },
       { rel: "stylesheet", href: css },
+      { rel: "stylesheet", href: panelCss },
     ],
   }),
   component: () => (
