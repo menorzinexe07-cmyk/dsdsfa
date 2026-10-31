@@ -1,5 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { BotPage } from '../pages/dashboard'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+// A aba "Integração" não existe mais: o controle do bot fica em Configurações.
 export const Route = createFileRoute('/dashboard/bots/$botId/integracao')({
-  component: () => { const { botId } = Route.useParams(); return <BotPage botId={botId} tab="integracao" /> },
+  beforeLoad: ({ params }) => { throw redirect({ href: `/dashboard/bots/${encodeURIComponent(params.botId)}/configuracoes` }) },
 })
