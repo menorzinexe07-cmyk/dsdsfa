@@ -60,7 +60,7 @@ export function Intro() {
   return (
     <div className={`intro ${fase}`} role="status" aria-label="Abrindo o site">
       <div className="intro-center" aria-hidden="true">
-        <span className="intro-mark">Z</span>
+        <img className="intro-mark" src="/zyra.png" alt="" width={84} height={84} />
         <div className="intro-word">
           {NOME.split("").map((c, i) => <span key={i} style={{ animationDelay: `${0.55 + i * 0.045}s` }}>{c}</span>)}
         </div>
