@@ -104,9 +104,10 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
     window.addEventListener("pageshow", reset);
     return () => { document.removeEventListener("click", onClick); window.removeEventListener("pageshow", reset); clearTimeout(t); };
   }, []);
-  const p = typeof window !== "undefined" ? window.location.pathname : "";
+  const [p, setP] = useState(""); // definido após montar: evita divergência entre o HTML do servidor e o navegador
+  useEffect(() => { setP(window.location.pathname); }, []);
   const item = (href: string, label: string, ext = false, beta = false) =>
-    <a key={href} href={href} className={!ext && p === href ? "on" : ""} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})}>{label}{beta && <em className="pillbeta">Beta</em>}</a>;
+    <a key={href} href={href} className={!ext && p === href ? "on" : ""} aria-current={!ext && p === href ? "page" : undefined} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})}>{label}{beta && <em className="pillbeta">Beta</em>}</a>;
   const base = bot ? `/dashboard/bots/${encodeURIComponent(bot.id)}` : "";
   const outAll = async () => { if (!confirm("Sair de todos os aparelhos? Você precisará entrar de novo em cada um.")) return;
     await api("/api/auth/logout-all", { method: "POST" }).catch(() => {}); window.location.href = "/"; };
