@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { INVITE } from "../content";
 import { Dash } from "../ui/Shell";
 import { api, brl, dt, useApi, ApiError } from "../ui/api";
@@ -31,13 +31,13 @@ export function DashboardHome() {
     {d.alerts.map((a: any, i: number) => <div key={i} className={`state ${a.level === "erro" ? "err" : ""}`}>{a.text}</div>)}
     <h2>Seus bots</h2><div className="grid3">{d.bots.map((b: any) => <BotCard key={b.bot_id} b={b} />)}</div>
     <h2>Últimas vendas registradas</h2>
-    {d.recent_sales.length ? <div className="tablewrap"><table className="rt"><thead><tr><th>Data</th><th>Cliente</th><th>Produto</th><th>Valor</th><th>Status</th></tr></thead>
-      <tbody>{d.recent_sales.map((s: any) => <tr key={s.bot_id + s.sale_id}><td data-label="Data">{dt(s.sold_at)}</td><td data-label="Cliente">{s.customer_name ?? "—"}</td>
-        <td data-label="Produto">{s.product_name ?? "—"}</td><td data-label="Valor">{brl(s.amount_net ?? s.amount_gross)}</td><td data-label="Status"><Badge s={s.status} /></td></tr>)}</tbody></table></div>
+    {d.recent_sales.length ? <div className="tablewrap"><table className="rt"><thead><tr><th>Data</th><th>Cliente</th><th>Produto</th><th className="num">Valor</th><th>Status</th></tr></thead>
+      <tbody>{d.recent_sales.map((s: any) => <tr key={s.bot_id + s.sale_id}><td className="nowrap" data-label="Data">{dt(s.sold_at)}</td><td data-label="Cliente">{s.customer_name ?? "—"}</td>
+        <td data-label="Produto">{s.product_name ?? "—"}</td><td className="num" data-label="Valor">{brl(s.amount_net ?? s.amount_gross)}</td><td data-label="Status"><Badge s={s.status} /></td></tr>)}</tbody></table></div>
       : <Empty>Nenhuma venda registrada ainda.</Empty>}
     <h2>Atividade recente</h2>
     {d.activity.length ? <ul className="plain">{d.activity.map((e: any, i: number) =>
-      <li key={i}>{dt(e.received_at)} — evento de {e.type === "sale" ? "venda" : "compra"} ({e.outcome === "error" ? "com erro" : "processado"})</li>)}</ul>
+      <li key={i}><span>Evento de {e.type === "sale" ? "venda" : "compra"}</span><span>{dt(e.received_at)} <Badge s={e.outcome === "error" ? "error" : "ok"} /></span></li>)}</ul>
       : <Empty>Sem atividade recente.</Empty>}
   </>}</Async></Dash>;
 }
@@ -65,46 +65,54 @@ function Overview({ botId }: { botId: string }) {
       const sc = s.status_counts ?? {};
       return <>
         <div className="kpis">
-          <Kpi label="Faturamento" value={brl(s.revenue)} hint="Líquido enviado (ou bruto, se não houver líquido)" /><Kpi label="Bruto informado" value={brl(s.gross)} /><Kpi label="Total líquido informado" value={brl(s.net)} />
+          <Kpi label="Faturamento" value={brl(s.revenue)} hint="Líquido enviado (ou bruto, se não houver líquido)" />
           <Kpi label="Vendas" value={s.sales} /><Kpi label="Ticket médio" value={brl(s.avg_ticket)} />
-          <Kpi label="Clientes únicos" value={s.unique_customers} /><Kpi label="Última venda" value={dt(s.last_sale)} />
-          <Kpi label="Hoje" value={`${s.today.sales} · ${brl(s.today.revenue)}`} /><Kpi label="Últimos 7 dias" value={`${s.last7.sales} · ${brl(s.last7.revenue)}`} />
-          <Kpi label="Últimos 30 dias" value={`${s.last30.sales} · ${brl(s.last30.revenue)}`} /><Kpi label="Todo o período" value={`${s.all.sales} · ${brl(s.all.revenue)}`} /></div>
+          <Kpi label="Clientes únicos" value={s.unique_customers} /></div>
+        <div className="kpis compact">
+          <Kpi label="Última venda" value={dt(s.last_sale)} />
+          <Kpi label="Bruto informado" value={brl(s.gross)} /><Kpi label="Líquido informado" value={brl(s.net)} />
+          <Kpi label="Hoje" value={brl(s.today.revenue)} hint={`${s.today.sales} vendas`} /><Kpi label="Últimos 7 dias" value={brl(s.last7.revenue)} hint={`${s.last7.sales} vendas`} />
+          <Kpi label="Últimos 30 dias" value={brl(s.last30.revenue)} hint={`${s.last30.sales} vendas`} /><Kpi label="Todo o período" value={brl(s.all.revenue)} hint={`${s.all.sales} vendas`} /></div>
         <div className="grid2">
           <div className="card"><h3>Faturamento por dia</h3><BarChart data={daily.map((d: any) => ({ label: d.label, value: d.gross }))} fmt={brl} /></div>
           <div className="card"><h3>Vendas por dia</h3><BarChart data={daily.map((d: any) => ({ label: d.label, value: d.sales }))} /></div>
           <div className="card"><h3>Evolução do faturamento</h3><LineChart data={evo} fmt={brl} /></div>
           <div className="card"><h3>Status das vendas no período</h3>
-            <ul className="plain"><li>Aprovadas: {sc.approved ?? 0}</li><li>Pendentes: {sc.pending ?? 0}</li><li>Canceladas: {sc.canceled ?? 0}</li><li>Reembolsadas: {sc.refunded ?? 0}</li></ul></div>
+            <ul className="plain"><li>Aprovadas <b>{sc.approved ?? 0}</b></li><li>Pendentes <b>{sc.pending ?? 0}</b></li><li>Canceladas <b>{sc.canceled ?? 0}</b></li><li>Reembolsadas <b>{sc.refunded ?? 0}</b></li></ul></div>
           <div className="card"><h3>Produtos mais vendidos</h3>{s.top_products.length ? <ul className="plain">{s.top_products.map((p: any) =>
-            <li key={p.name}>{p.name} — {p.sales} vendas · {brl(p.revenue)}</li>)}</ul> : <Empty>Nenhum produto enviado pela integração.</Empty>}</div>
+            <li key={p.name}><span>{p.name}</span><b>{brl(p.revenue)} <small>({p.sales} {p.sales === 1 ? "venda" : "vendas"})</small></b></li>)}</ul> : <Empty>Nenhum produto enviado pela integração.</Empty>}</div>
           <div className="card"><h3>Clientes que mais compraram</h3>{s.top_customers.length ? <ul className="plain">{s.top_customers.map((c: any) =>
-            <li key={c.discord_id} className="whois"><Avatar src={c.icon} name={c.name} /> {c.name ?? c.discord_id} — {c.purchases} compras · {brl(c.revenue)}</li>)}</ul> : <Empty>Sem clientes identificados.</Empty>}</div>
+            <li key={c.discord_id}><span className="whois"><Avatar src={c.icon} name={c.name} /> {c.name ?? c.discord_id}</span><b>{brl(c.revenue)} <small>({c.purchases} {c.purchases === 1 ? "compra" : "compras"})</small></b></li>)}</ul> : <Empty>Sem clientes identificados.</Empty>}</div>
         </div></>; }}</Async></>;
 }
 
 function Sales({ botId }: { botId: string }) {
   const init = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const [f, setF] = useState({ q: init.get("q") ?? "", status: "", from: "", to: "", sort: "sold_at", dir: "desc", page: 1 });
+  const [typed, setTyped] = useState(f.q);
+  useEffect(() => { const t = setTimeout(() => setF((x) => (x.q === typed ? x : { ...x, q: typed, page: 1 })), 350); return () => clearTimeout(t); }, [typed]); // espera parar de digitar
   const qs = new URLSearchParams({ page: String(f.page), pageSize: "20", sort: f.sort, dir: f.dir });
   if (f.q) qs.set("q", f.q); if (f.status) qs.set("status", f.status);
   if (f.from) qs.set("from", new Date(f.from).toISOString()); if (f.to) qs.set("to", new Date(f.to + "T23:59:59").toISOString());
   const q = useApi<any>(`/api/bots/${encodeURIComponent(botId)}/sales?${qs}`);
-  const th = (k: string, l: string) => <th className="sort" onClick={() => setF({ ...f, sort: k, dir: f.sort === k && f.dir === "desc" ? "asc" : "desc", page: 1 })}>{l}{f.sort === k ? (f.dir === "desc" ? " ↓" : " ↑") : ""}</th>;
+  const sortBy = (k: string) => setF({ ...f, sort: k, dir: f.sort === k && f.dir === "desc" ? "asc" : "desc", page: 1 });
+  const th = (k: string, l: string, num = false) => <th className={`sort${num ? " num" : ""}`} tabIndex={0} role="button" onClick={() => sortBy(k)}
+    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(k); } }}
+    aria-sort={f.sort === k ? (f.dir === "desc" ? "descending" : "ascending") : "none"}>{l}{f.sort === k ? (f.dir === "desc" ? " ↓" : " ↑") : ""}</th>;
   return <><h1>Vendas</h1>
-    <div className="filters"><input className="input" placeholder="Cliente, ID Discord, produto ou ID da venda" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value, page: 1 })} />
-      <select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value, page: 1 })}>
+    <div className="filters"><input className="input" aria-label="Buscar vendas" placeholder="Buscar por cliente, ID Discord, produto ou ID da venda" value={typed} onChange={(e) => setTyped(e.target.value)} />
+      <select className="input" aria-label="Status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value, page: 1 })}>
         <option value="">Todos os status</option><option value="approved">Aprovadas</option><option value="pending">Pendentes</option><option value="canceled">Canceladas</option><option value="refunded">Reembolsadas</option></select>
-      <input className="input" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value, page: 1 })} />
-      <input className="input" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value, page: 1 })} /></div>
+      <input className="input" type="date" aria-label="De" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value, page: 1 })} />
+      <input className="input" type="date" aria-label="Até" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value, page: 1 })} /></div>
     <Async q={q}>{(d) => !d.items.length ? <Empty>Nenhuma venda encontrada.</Empty> : <>
       <div className="tablewrap"><table className="rt"><thead><tr>{th("sold_at", "Data e hora")}{th("customer_name", "Cliente")}<th>ID Discord</th><th>Produto</th><th>Pagamento</th>
-        {th("amount_gross", "Bruto")}<th>Taxas</th>{th("amount_net", "Líquido")}{th("status", "Status")}<th>ID da venda</th></tr></thead>
-        <tbody>{d.items.map((s: any) => <tr key={s.sale_id}><td data-label="Data">{dt(s.sold_at)}</td>
+        {th("amount_gross", "Bruto", true)}<th className="num">Taxas</th>{th("amount_net", "Líquido", true)}{th("status", "Status")}<th>ID da venda</th></tr></thead>
+        <tbody>{d.items.map((s: any) => <tr key={s.sale_id}><td className="nowrap" data-label="Data">{dt(s.sold_at)}</td>
           <td data-label="Cliente"><span className="whois"><Avatar src={s.customer_icon} name={s.customer_name} size={24} /> {s.customer_name ?? "—"}</span></td>
           <td data-label="ID Discord">{s.customer_discord_id ?? "—"}</td><td data-label="Produto">{s.product_name ?? "—"}</td>
           <td data-label="Pagamento">{[s.payment_method, s.gateway].filter(Boolean).join(" · ") || "—"}</td>
-          <td data-label="Bruto">{brl(s.amount_gross)}</td><td data-label="Taxas">{brl(s.fees)}</td><td data-label="Líquido">{brl(s.amount_net)}</td>
+          <td className="num" data-label="Bruto">{brl(s.amount_gross)}</td><td className="num" data-label="Taxas">{brl(s.fees)}</td><td className="num" data-label="Líquido">{brl(s.amount_net)}</td>
           <td data-label="Status"><Badge s={s.status} /></td><td data-label="ID da venda"><code>{s.sale_id}</code></td></tr>)}</tbody></table></div>
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={(page) => setF({ ...f, page })} /></>}</Async></>;
 }
@@ -113,13 +121,13 @@ function Clients({ botId }: { botId: string }) {
   const [q0, setQ] = useState(""); const [page, setPage] = useState(1);
   const q = useApi<any>(`/api/bots/${encodeURIComponent(botId)}/customers?page=${page}&pageSize=20&q=${encodeURIComponent(q0)}`);
   return <><h1>Meus Clientes</h1>
-    <input className="input" placeholder="Pesquisar por nome ou ID Discord" value={q0} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+    <input className="input" style={{ margin: "18px 0" }} aria-label="Pesquisar clientes" placeholder="Pesquisar por nome ou ID Discord" value={q0} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
     <Async q={q}>{(d) => !d.items.length ? <Empty>Nenhum cliente encontrado.</Empty> : <>
-      <div className="tablewrap"><table className="rt"><thead><tr><th>Cliente</th><th>ID Discord</th><th>Primeira compra</th><th>Última compra</th><th>Compras</th><th>Total gasto</th><th>Produtos</th><th /></tr></thead>
+      <div className="tablewrap"><table className="rt"><thead><tr><th>Cliente</th><th>ID Discord</th><th>Primeira compra</th><th>Última compra</th><th className="num">Compras</th><th className="num">Total gasto</th><th>Produtos</th><th /></tr></thead>
         <tbody>{d.items.map((c: any) => <tr key={c.k}><td data-label="Cliente"><span className="whois"><Avatar src={c.icon} name={c.name} size={24} /> {c.name ?? "—"}</span></td>
           <td data-label="ID Discord">{c.did ?? "—"}</td><td data-label="Primeira compra">{dt(c.first_at)}</td><td data-label="Última compra">{dt(c.last_at)}</td>
-          <td data-label="Compras">{c.purchases}</td><td data-label="Total gasto">{brl(c.spent)}</td><td data-label="Produtos">{c.products?.join(", ") || "—"}</td>
-          <td data-label="Histórico">{c.did && <a href={`${botHref(botId, "vendas")}?q=${c.did}`}>Ver vendas</a>}</td></tr>)}</tbody></table></div>
+          <td className="num" data-label="Compras">{c.purchases}</td><td className="num" data-label="Total gasto">{brl(c.spent)}</td><td className="clip" data-label="Produtos">{c.products?.join(", ") || "—"}</td>
+          <td className="act" data-label="Histórico">{c.did && <a href={`${botHref(botId, "vendas")}?q=${c.did}`}>Ver vendas</a>}</td></tr>)}</tbody></table></div>
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={setPage} /></>}</Async></>;
 }
 
