@@ -132,13 +132,19 @@ export async function getMyBots(discordId: string) {
   return data ?? [];
 }
 
-/** Use em TODA rota /dashboard/bots/:botId e em toda API de dados do bot. */
+/** Use em TODA rota /dashboard/bots/:botId e em toda API de dados do bot.
+ *  Admin da plataforma (platform_admins) acessa qualquer bot que exista; `asAdmin` marca esse caso para auditoria e aviso na tela. */
 export async function requireBotOwner(req: Request, botId: string) {
   const uid = await getSessionUser(req);
   if (!uid) return { status: 401 as const };
   const { data } = await db.from("app_owners").select("bot_id")
     .eq("bot_id", botId).eq("discord_user_id", uid).eq("active", true).maybeSingle();
-  return data ? { status: 200 as const, uid } : { status: 404 as const }; // 404 não revela que o bot existe
+  if (data) return { status: 200 as const, uid, asAdmin: false };
+  if (await isAdminUid(uid)) {
+    const { data: app } = await db.from("apps").select("bot_id").eq("bot_id", botId).maybeSingle();
+    if (app) return { status: 200 as const, uid, asAdmin: true };
+  }
+  return { status: 404 as const }; // 404 não revela que o bot existe
 }
 
 export async function isAdmin(req: Request) {
