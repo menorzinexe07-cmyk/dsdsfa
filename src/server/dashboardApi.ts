@@ -1,248 +1,163 @@
-import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { db } from "./db";
-import { ensureTestBot, getMyBots, getSessionUser, isAdmin, renewSession, requireBotOwner } from "./auth";
-import { createCredential, json } from "./api";
-import { getStats, listCustomers, listSales } from "./queries";
-import { ShardError, getShardApp, getShardStatus, isShardId, renameShardApp, setShardPower, syncShardName } from "./shard";
+import { authenticate, json } from "./api";
+import { audit, owner, writeGuard, type Route } from "./dashboardApi";
+import { MAX_PRODUCTS_PER_BOT, listProductsSchema, parseProductForm, signPayload } from "./productCore";
 
-export type Handler = (req: Request, m: RegExpExecArray) => Promise<Response> | Response;
-export type Route = [method: string, re: RegExp, h: Handler];
+const BUCKET = "product-banners";
+const COLS = "id,bot_id,external_id,name,description,delivery_type,banner_url,source,sync_status,sync_error,synced_at,created_at";
+const MAX_ROWS_PER_BOT = 500; // teto total (site + bot) para a lista não crescer sem limite
+const safeDir = (botId: string) => botId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80);
 
-export function sameOrigin(req: Request) {
-  const o = req.headers.get("origin");
-  try { return !!o && new URL(o).host === new URL(process.env.APP_URL!).host; } catch { return false; }
-}
-export async function audit(actor: string, action: string, target?: string, meta?: unknown) {
-  await db.from("audit_logs").insert({ actor, action, target, meta });
-}
-const integrationStatus = (i: any) =>
-  !i?.last_request_at ? "aguardando" : Date.now() - Date.parse(i.last_request_at) < 7 * 864e5 ? "ativa" : "sem_eventos_recentes";
+const createHits = new Map<string, number[]>(); // 10 criações por minuto por usuário
+const tooFast = (uid: string) => {
+  const now = Date.now(), arr = (createHits.get(uid) ?? []).filter((t) => now - t < 60_000);
+  arr.push(now); createHits.set(uid, arr); return arr.length > 10;
+};
+const lastResend = new Map<string, number>();
 
-export async function owner(req: Request, botId: string) {
-  const r = await requireBotOwner(req, botId);
-  if (r.status === 401) return { err: json({ error: "session_expired" }, 401) };
-  if (r.status === 404) return { err: json({ error: "bot_not_found" }, 404) };
-  // admin mexendo em bot de cliente: toda alteração fica registrada na auditoria
-  if (r.asAdmin && req.method !== "GET") await audit(r.uid, "admin.bot_access", botId, { method: req.method, path: new URL(req.url).pathname });
-  return { uid: r.uid, asAdmin: r.asAdmin };
-}
+type Push = { status: "pending" | "synced" | "failed"; error?: string; external_id?: string };
 
-/** Nomes dos donos de cada bot (só para admin). */
-async function ownersOf(botIds: string[]) {
-  const out = new Map<string, { discord_id: string; name: string }[]>();
-  if (!botIds.length) return out;
-  const { data: rows } = await db.from("app_owners").select("bot_id,discord_user_id").in("bot_id", botIds).eq("active", true);
-  const ids = [...new Set((rows ?? []).map((r: any) => r.discord_user_id))];
-  const { data: profs } = ids.length ? await db.from("profiles").select("discord_id,username,global_name").in("discord_id", ids) : { data: [] as any[] };
-  const name = new Map((profs ?? []).map((p: any) => [p.discord_id, p.global_name || p.username || p.discord_id]));
-  for (const r of rows ?? []) {
-    const list = out.get(r.bot_id) ?? []; list.push({ discord_id: r.discord_user_id, name: String(name.get(r.discord_user_id) ?? r.discord_user_id) }); out.set(r.bot_id, list);
+/** Envia o produto novo ao bot (webhook). O endereço vem do .env (BOT_WEBHOOK_URL, com {botId}), nunca do usuário. */
+async function pushToBot(p: any): Promise<Push> {
+  const tpl = process.env.BOT_WEBHOOK_URL;
+  if (!tpl) return { status: "pending", error: "bot_webhook_not_configured" };
+  let url: URL;
+  try { url = new URL(tpl.replace("{botId}", encodeURIComponent(p.bot_id))); } catch { return { status: "failed", error: "bot_webhook_invalid" }; }
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && process.env.NODE_ENV !== "production")) return { status: "failed", error: "bot_webhook_insecure" };
+  const body = JSON.stringify({
+    event: "product.created", bot_id: p.bot_id, sent_at: new Date().toISOString(),
+    product: { id: p.id, name: p.name, description: p.description, delivery_type: p.delivery_type, banner_url: p.banner_url, created_at: p.created_at },
+  });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const headers: Record<string, string> = { "content-type": "application/json", "x-zyra-event": "product.created", "x-zyra-timestamp": ts };
+  if (process.env.BOT_WEBHOOK_SECRET) headers["x-zyra-signature"] = signPayload(process.env.BOT_WEBHOOK_SECRET, ts, body);
+  try {
+    const r = await fetch(url, { method: "POST", headers, body, redirect: "error", signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return { status: "failed", error: `bot_http_${r.status}` };
+    const j: any = await r.json().catch(() => null);
+    const ext = j?.product_id ?? j?.external_id ?? j?.id;
+    return { status: "synced", external_id: ext != null ? String(ext).slice(0, 100) : undefined };
+  } catch (e) {
+    return { status: "failed", error: (e as Error).name === "TimeoutError" ? "bot_timeout" : "bot_unreachable" };
   }
-  return out;
 }
-const SHARD_HTTP: Record<string, number> = { not_configured: 503, auth: 502, not_found: 404, rejected: 502, unavailable: 502 };
-function shardFail(e: unknown) {
-  if (e instanceof ShardError) {
-    const body: any = { error: `shard_${e.code}` };
-    if (e.code === "rejected" && e.detail) body.detail = e.detail;
-    return json(body, SHARD_HTTP[e.code] ?? 502);
-  }
-  throw e;
+
+async function syncProduct(p: any) {
+  const r = await pushToBot(p), now = new Date().toISOString();
+  const patch: any = { sync_status: r.status, sync_error: r.error ?? null, updated_at: now, ...(r.status === "synced" ? { synced_at: now } : {}) };
+  if (r.external_id) patch.external_id = r.external_id;
+  let res = await db.from("products").update(patch).eq("id", p.id).select(COLS).single();
+  if (res.error && patch.external_id) { delete patch.external_id; res = await db.from("products").update(patch).eq("id", p.id).select(COLS).single(); } // id do bot já em uso
+  return res.data ?? { ...p, ...patch };
 }
-const lastPower = new Map<string, number>();
 
-export const writeGuard = (req: Request) => (sameOrigin(req) ? null : json({ error: "bad_origin" }, 403));
-
-export const userRoutes: Route[] = [
-  ["GET", /^\/api\/me$/, async (req) => {
-    const uid = await getSessionUser(req);
-    if (!uid) return json({ error: "session_expired" }, 401);
-    const { data } = await db.from("profiles").select("discord_id,username,global_name,avatar").eq("discord_id", uid).single();
-    const renewed = await renewSession(req); // mantém o aparelho conectado enquanto ele for usado
-    const body = JSON.stringify({ ...data, is_admin: await isAdmin(req) });
-    const h = new Headers({ "content-type": "application/json" });
-    if (renewed) h.append("Set-Cookie", renewed);
-    return new Response(body, { headers: h });
-  }],
-
-  ["GET", /^\/api\/public\/settings$/, async () => {
-    const { data } = await db.from("platform_settings").select("key,value").in("key", ["price", "faq", "site"]);
-    return new Response(JSON.stringify(Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))), {
-      headers: { "content-type": "application/json", "cache-control": "public, s-maxage=60, stale-while-revalidate=300" } });
-  }],
-
-  ["GET", /^\/api\/dashboard\/summary$/, async (req) => {
-    const uid = await getSessionUser(req);
-    if (!uid) return json({ error: "session_expired" }, 401);
-    await ensureTestBot(uid);
-    const mine = await getMyBots(uid);
-    const ids = mine.map((b) => b.bot_id);
-    if (!ids.length) return json({ bots: [], recent_sales: [], activity: [], alerts: [] });
-    const [ints, sales, events] = await Promise.all([
-      db.from("app_integrations").select("*").in("bot_id", ids),
-      db.from("sales").select("bot_id,sale_id,customer_name,product_name,amount_gross,amount_net,status,sold_at")
-        .in("bot_id", ids).order("sold_at", { ascending: false }).limit(10),
-      db.from("api_events").select("bot_id,type,outcome,received_at").in("bot_id", ids)
-        .order("received_at", { ascending: false }).limit(10),
-    ]);
-    const bots = mine.map((b: any) => {
-      const i = (ints.data ?? []).find((x) => x.bot_id === b.bot_id);
-      return { bot_id: b.bot_id, name: b.apps?.name, avatar_url: b.apps?.avatar_url, license_status: b.apps?.license_status,
-        acquired_at: b.acquired_at, integration: { status: integrationStatus(i), last_request_at: i?.last_request_at ?? null } };
-    });
-    const alerts: { level: string; text: string }[] = [];
-    for (const b of bots) {
-      if (b.license_status !== "active") alerts.push({ level: "erro", text: `A licença de ${b.name} está ${b.license_status}.` });
-      if (b.integration.status === "aguardando") alerts.push({ level: "info", text: `A integração de ${b.name} ainda não recebeu eventos do Bot Manager.` });
-      if (b.integration.status === "sem_eventos_recentes") alerts.push({ level: "aviso", text: `${b.name} está sem eventos há mais de 7 dias.` });
-    }
-    return json({ bots, recent_sales: sales.data ?? [], activity: events.data ?? [], alerts });
-  }],
-
-  ["GET", /^\/api\/bots$/, async (req) => {
-    const uid = await getSessionUser(req);
-    if (!uid) return json({ error: "session_expired" }, 401);
-    await ensureTestBot(uid);
-    if (new URL(req.url).searchParams.get("all")) { // admin: todos os bots de todos os clientes
-      if (!(await isAdmin(req))) return json({ error: "forbidden" }, 403);
-      const { data: apps } = await db.from("apps").select("bot_id,name,avatar_url,license_status,created_at")
-        .order("created_at", { ascending: false }).limit(500);
-      const ids = (apps ?? []).map((a: any) => a.bot_id);
-      const [{ data: ints }, owners] = await Promise.all([db.from("app_integrations").select("*").in("bot_id", ids), ownersOf(ids)]);
-      return json({ all: true, bots: (apps ?? []).map((a: any) => {
-        const i = (ints ?? []).find((x: any) => x.bot_id === a.bot_id);
-        return { bot_id: a.bot_id, name: a.name, avatar_url: a.avatar_url, license_status: a.license_status, acquired_at: a.created_at,
-          owners: owners.get(a.bot_id) ?? [], integration: { status: integrationStatus(i), last_request_at: i?.last_request_at ?? null } };
-      }) });
-    }
-    const mine = await getMyBots(uid);
-    const { data: ints } = await db.from("app_integrations").select("*").in("bot_id", mine.map((b) => b.bot_id));
-    return json({ bots: mine.map((b: any) => {
-      const i = (ints ?? []).find((x) => x.bot_id === b.bot_id);
-      return { bot_id: b.bot_id, name: b.apps?.name, avatar_url: b.apps?.avatar_url, license_status: b.apps?.license_status,
-        acquired_at: b.acquired_at, integration: { status: integrationStatus(i), last_request_at: i?.last_request_at ?? null } };
-    }) });
-  }],
-
-  ["GET", /^\/api\/bots\/([^/]+)$/, async (req, m) => {
+// ───────── painel (dono do bot ou admin) ─────────
+export const productRoutes: Route[] = [
+  ["GET", /^\/api\/bots\/([^/]+)\/products$/, async (req, m) => {
     const o = await owner(req, m[1]); if (o.err) return o.err;
-    const { data } = await db.from("apps").select("bot_id,name,avatar_url,license_status,created_at").eq("bot_id", m[1]).single();
-    if (!o.asAdmin) return json(data);
-    return json({ ...data, as_admin: true, owners: (await ownersOf([m[1]])).get(m[1]) ?? [] });
+    const { data, error } = await db.from("products").select(COLS).eq("bot_id", m[1]).order("created_at", { ascending: false }).limit(MAX_ROWS_PER_BOT);
+    if (error) return json({ error: "internal_error" }, 500);
+    return json({ items: data ?? [], bot_webhook_configured: !!process.env.BOT_WEBHOOK_URL });
   }],
 
-  ["PATCH", /^\/api\/bots\/([^/]+)$/, async (req, m) => {
+  ["POST", /^\/api\/bots\/([^/]+)\/products$/, async (req, m) => {
     const g = writeGuard(req); if (g) return g;
     const o = await owner(req, m[1]); if (o.err) return o.err;
-    const p = z.object({
-      name: z.string().trim().min(1).max(60).regex(/^[^\u0000-\u001f\u007f]+$/).optional(),
-      avatar_url: z.string().url().startsWith("https://").max(300).nullable().optional(),
-    }).safeParse(await req.json().catch(() => null));
-    if (!p.success) return json({ error: "validation_error" }, 422);
-    const { data: cur } = await db.from("apps").select("name").eq("bot_id", m[1]).single();
-    if (p.data.name && p.data.name !== cur?.name && isShardId(m[1])) {
-      try { await renameShardApp(m[1], p.data.name); } catch (e) { return shardFail(e); } // só salva aqui se a Shard aceitou
+    if (tooFast(o.uid!)) return json({ error: "rate_limited" }, 429);
+    const f = await parseProductForm(req);
+    if (!f.ok) return json({ error: f.error, fields: f.fields }, f.status);
+    const { count } = await db.from("products").select("id", { count: "exact", head: true }).eq("bot_id", m[1]);
+    if ((count ?? 0) >= MAX_PRODUCTS_PER_BOT) return json({ error: "product_limit" }, 409);
+
+    const path = `${safeDir(m[1])}/${randomUUID()}.${f.file.ext}`;
+    const up = await db.storage.from(BUCKET).upload(path, f.file.bytes, { contentType: f.file.mime, upsert: false, cacheControl: "31536000" });
+    if (up.error) { console.error("[products] upload", up.error.message); return json({ error: "storage_error" }, 502); }
+    const banner_url = db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+
+    const ins = await db.from("products").insert({
+      bot_id: m[1], name: f.name, description: f.description, delivery_type: f.delivery_type,
+      banner_url, banner_path: path, source: "site", sync_status: "pending", created_by: o.uid,
+    }).select(COLS).single();
+    if (ins.error || !ins.data) {
+      await db.storage.from(BUCKET).remove([path]).catch(() => {}); // não deixa imagem órfã
+      console.error("[products] insert", ins.error?.message);
+      return json({ error: "internal_error" }, 500);
     }
-    await db.from("apps").update(p.data).eq("bot_id", m[1]);
-    await audit(o.uid!, "bot.update", m[1], p.data);
-    return json({ ok: true });
+    await audit(o.uid!, "product.create", m[1], { product_id: ins.data.id, name: f.name });
+    return json({ product: await syncProduct(ins.data) }, 201);
   }],
 
-  // Detalhes do app direto da Shard Cloud (nome, id, linguagem, recursos, status).
-  ["GET", /^\/api\/bots\/([^/]+)\/shard$/, async (req, m) => {
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    if (!isShardId(m[1])) return json({ linked: false });
-    try {
-      const [app, st] = await Promise.all([getShardApp(m[1]), getShardStatus(m[1])]);
-      if (app?.name) await syncShardName(m[1], app.name);
-      return json({
-        linked: true, id: app?.id ?? m[1], name: app?.name, language: app?.language, version: app?.version,
-        ram: app?.ram, vcpu: app?.vcpu, created_at: app?.created_at ?? null,
-        blocked_until: app?.blocked_until ?? null, blocked_reason: app?.blocked_reason ?? null,
-        status: st?.status ?? "not_found", uptime_seconds: st?.container_uptime_seconds ?? 0,
-      });
-    } catch (e) { return shardFail(e); }
-  }],
-
-  // Iniciar / reiniciar / desligar
-  ["POST", /^\/api\/bots\/([^/]+)\/power$/, async (req, m) => {
+  ["POST", /^\/api\/bots\/([^/]+)\/products\/([0-9a-f-]{36})\/resend$/, async (req, m) => {
     const g = writeGuard(req); if (g) return g;
     const o = await owner(req, m[1]); if (o.err) return o.err;
-    const p = z.object({ action: z.enum(["run", "stop", "restart"]) }).safeParse(await req.json().catch(() => null));
-    if (!p.success) return json({ error: "validation_error" }, 422);
-    if (!isShardId(m[1])) return json({ error: "not_shard_app" }, 422);
-    const { data: app } = await db.from("apps").select("license_status").eq("bot_id", m[1]).single();
-    if (app?.license_status !== "active" && p.data.action !== "stop") return json({ error: "license_inactive" }, 403);
+    const { data: p } = await db.from("products").select(COLS).eq("id", m[2]).eq("bot_id", m[1]).maybeSingle();
+    if (!p) return json({ error: "not_found" }, 404);
+    if (p.source !== "site" || p.sync_status === "synced") return json({ error: "nothing_to_send" }, 409);
     const now = Date.now();
-    if (now - (lastPower.get(m[1]) ?? 0) < 8000) return json({ error: "too_fast" }, 429);
-    lastPower.set(m[1], now);
-    try { await setShardPower(m[1], p.data.action); } catch (e) { return shardFail(e); }
-    await audit(o.uid!, `bot.power.${p.data.action}`, m[1]);
-    return json({ ok: true });
-  }],
-
-  ["GET", /^\/api\/bots\/([^/]+)\/stats$/, async (req, m) => {
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    return json(await getStats(m[1], new URL(req.url).searchParams));
-  }],
-  ["GET", /^\/api\/bots\/([^/]+)\/sales$/, async (req, m) => {
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    return json(await listSales(m[1], new URL(req.url).searchParams));
-  }],
-  ["GET", /^\/api\/bots\/([^/]+)\/customers$/, async (req, m) => {
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    return json(await listCustomers(m[1], new URL(req.url).searchParams));
-  }],
-
-  ["GET", /^\/api\/bots\/([^/]+)\/integration$/, async (req, m) => {
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    const [i, errs, creds, sales] = await Promise.all([
-      db.from("app_integrations").select("*").eq("bot_id", m[1]).maybeSingle(),
-      db.from("api_events").select("type,error,received_at").eq("bot_id", m[1]).eq("outcome", "error")
-        .order("received_at", { ascending: false }).limit(5),
-      db.from("api_credentials").select("id,name,key_prefix,bot_ids,created_at,last_used_at,revoked_at").contains("bot_ids", [m[1]]),
-      db.from("sales").select("sale_id", { count: "exact", head: true }).eq("bot_id", m[1]),
-    ]);
-    return json({
-      status: integrationStatus(i.data), last_request_at: i.data?.last_request_at ?? null,
-      last_event_id: i.data?.last_event_id ?? null, events_processed: i.data?.events_processed ?? 0,
-      sales_received: sales.count ?? 0, recent_errors: errs.data ?? [],
-      // só credenciais exclusivas deste bot podem ser geridas pelo dono
-      credentials: (creds.data ?? []).filter((c) => c.bot_ids.length === 1 && !c.bot_ids.includes("*")),
-    });
-  }],
-
-  ["POST", /^\/api\/bots\/([^/]+)\/credentials$/, async (req, m) => {
-    const g = writeGuard(req); if (g) return g;
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    const p = z.object({ name: z.string().trim().min(1).max(60) }).safeParse(await req.json().catch(() => null));
-    if (!p.success) return json({ error: "validation_error" }, 422);
-    const { count } = await db.from("api_credentials").select("id", { count: "exact", head: true })
-      .contains("bot_ids", [m[1]]).is("revoked_at", null);
-    if ((count ?? 0) >= 5) return json({ error: "credential_limit" }, 409);
-    const secret = await createCredential(p.data.name, [m[1]]);
-    await audit(o.uid!, "credential.create", m[1], { name: p.data.name });
-    return json({ secret, notice: "Guarde agora. Este segredo não será exibido novamente." }, 201);
-  }],
-
-  ["POST", /^\/api\/bots\/([^/]+)\/credentials\/([0-9a-f-]{36})\/rotate$/, async (req, m) => {
-    const g = writeGuard(req); if (g) return g;
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    const { data: c } = await db.from("api_credentials").select("id,name,bot_ids,revoked_at").eq("id", m[2]).maybeSingle();
-    if (!c || c.revoked_at || c.bot_ids.length !== 1 || c.bot_ids[0] !== m[1]) return json({ error: "not_found" }, 404);
-    await db.from("api_credentials").update({ revoked_at: new Date().toISOString() }).eq("id", c.id);
-    const secret = await createCredential(c.name, [m[1]]);
-    await audit(o.uid!, "credential.rotate", m[1], { id: c.id });
-    return json({ secret, notice: "Guarde agora. Este segredo não será exibido novamente." }, 201);
-  }],
-
-  ["DELETE", /^\/api\/bots\/([^/]+)\/credentials\/([0-9a-f-]{36})$/, async (req, m) => {
-    const g = writeGuard(req); if (g) return g;
-    const o = await owner(req, m[1]); if (o.err) return o.err;
-    const { data: c } = await db.from("api_credentials").select("id,bot_ids").eq("id", m[2]).maybeSingle();
-    if (!c || c.bot_ids.length !== 1 || c.bot_ids[0] !== m[1]) return json({ error: "not_found" }, 404);
-    await db.from("api_credentials").update({ revoked_at: new Date().toISOString() }).eq("id", c.id);
-    await audit(o.uid!, "credential.revoke", m[1], { id: c.id });
-    return json({ ok: true });
+    if (now - (lastResend.get(p.id) ?? 0) < 5000) return json({ error: "too_fast" }, 429);
+    lastResend.set(p.id, now);
+    return json({ product: await syncProduct(p) });
   }],
 ];
+
+// ───────── API do bot (credencial Bearer zy_...) ─────────
+
+/** POST /api/v1/apps/:botId/listproducts — o bot envia a lista dos produtos dele e o site grava/atualiza. */
+export async function handleListProducts(req: Request, botId: string) {
+  const a = await authenticate(req, botId); if (a.err) return a.err;
+  if (Number(req.headers.get("content-length") ?? 0) > 1_000_000) return json({ error: "payload_too_large" }, 413);
+  const parsed = listProductsSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return json({ error: "validation_error", details: parsed.error.flatten() }, 422);
+  const { data: app } = await db.from("apps").select("bot_id").eq("bot_id", botId).maybeSingle();
+  if (!app) return json({ error: "bot_not_found" }, 404);
+
+  const incoming = [...new Map(parsed.data.products.map((p) => [p.id, p])).values()]; // mesmo id duas vezes: vale o último
+  const { data: rows } = await db.from("products").select("id,external_id,source,banner_path").eq("bot_id", botId);
+  const existing = rows ?? [];
+  const byExt = new Map(existing.filter((r) => r.external_id).map((r) => [r.external_id as string, r]));
+  const byId = new Map(existing.map((r) => [r.id as string, r]));
+  const now = new Date().toISOString();
+
+  const inserts: any[] = [], updates: { id: string; patch: any }[] = [];
+  for (const p of incoming) {
+    const ex = byExt.get(p.id) ?? (p.site_id ? byId.get(p.site_id) : undefined);
+    const common = { external_id: p.id, name: p.name, delivery_type: p.delivery_type, sync_status: "synced", sync_error: null, synced_at: now, updated_at: now };
+    if (ex) updates.push({ id: ex.id, patch: { ...common, ...(p.description ? { description: p.description } : {}), ...(p.banner_url !== undefined ? { banner_url: p.banner_url } : {}) } });
+    else inserts.push({ ...common, bot_id: botId, description: p.description || "Sem descrição", banner_url: p.banner_url ?? "", source: "bot" });
+  }
+  if (existing.length + inserts.length > MAX_ROWS_PER_BOT) return json({ error: "product_limit" }, 409);
+
+  let failed = 0;
+  if (inserts.length) {
+    const r = await db.from("products").insert(inserts);
+    if (r.error) { console.error("[listproducts] insert", r.error.message); return json({ error: "internal_error" }, 500); }
+  }
+  for (let i = 0; i < updates.length; i += 25) {
+    const res = await Promise.all(updates.slice(i, i + 25).map((u) => db.from("products").update(u.patch).eq("id", u.id)));
+    failed += res.filter((r) => r.error).length;
+  }
+
+  let removed = 0;
+  if (parsed.data.replace) { // o que tem id do bot e sumiu da lista foi apagado no bot
+    const keep = new Set(incoming.map((p) => p.id));
+    const gone = existing.filter((r) => r.external_id && !keep.has(r.external_id));
+    if (gone.length) {
+      await db.from("products").delete().in("id", gone.map((r) => r.id));
+      const paths = gone.map((r) => r.banner_path).filter(Boolean) as string[];
+      if (paths.length) await db.storage.from(BUCKET).remove(paths).catch(() => {});
+      removed = gone.length;
+    }
+  }
+  return json({ result: "ok", received: incoming.length, created: inserts.length, updated: updates.length - failed, failed, removed });
+}
+
+/** GET /api/v1/apps/:botId/products[?pending=1] — o bot lê os produtos criados no site (ex.: quando o envio automático não está ligado). */
+export async function handleGetProducts(req: Request, botId: string) {
+  const a = await authenticate(req, botId); if (a.err) return a.err;
+  let q = db.from("products").select(COLS).eq("bot_id", botId).order("created_at", { ascending: true }).limit(MAX_ROWS_PER_BOT);
+  if (new URL(req.url).searchParams.get("pending")) q = q.eq("source", "site").neq("sync_status", "synced");
+  const { data, error } = await q;
+  if (error) return json({ error: "internal_error" }, 500);
+  return json({ products: data ?? [] });
+}
