@@ -960,3 +960,32 @@ export function Legal({ kind }: { kind: "privacidade" | "termos" }) {
     </div>)}
   </div></section></Public>;
 }
+
+// ───────────────────────── 404 ─────────────────────────
+
+const NF_LINKS = [
+  { href: "/zyrasallers", t: "ZyraSallers", d: "Conheça o bot e o que ele faz." },
+  { href: "/precos", t: "Preços", d: "Quanto custa e o que está incluso." },
+  { href: "/faq", t: "Perguntas frequentes", d: "Respostas rápidas para as dúvidas comuns." },
+  { href: "/login", t: "Painel", d: "Entre com o Discord e veja suas vendas." },
+];
+
+export function NotFound() {
+  usePageTitle("Página não encontrada");
+  const [path, setPath] = useState("");
+  useEffect(() => { setPath(window.location.pathname); }, []);
+  const dentroPainel = path.startsWith("/dashboard") || path.startsWith("/admin");
+  return <Public><section className="nf"><div className="wrap">
+    <div className="nf-code" aria-hidden="true">404</div>
+    <h1>Essa página não existe.</h1>
+    <p className="lead">O endereço pode ter sido digitado errado, ou a página mudou de lugar.
+      {path && <> Você tentou abrir <code className="nf-path">{path.length > 60 ? `${path.slice(0, 60)}…` : path}</code>.</>}</p>
+    {dentroPainel && <p className="nf-hint">Links do painel só funcionam para quem tem o bot vinculado à conta. Confira se entrou com o Discord certo.</p>}
+    <div className="actions">
+      <a className="btn solid lg" href="/">Voltar ao início</a>
+      <a className="btn lg" href={dentroPainel ? "/dashboard" : "/login"}>{dentroPainel ? "Ir para o painel" : "Acessar painel"}</a>
+      <button type="button" className="btn lg" onClick={() => window.history.length > 1 ? window.history.back() : (window.location.href = "/")}>Voltar</button>
+    </div>
+    <ul className="nf-links">{NF_LINKS.map((l) => <li key={l.href}><a href={l.href}><b>{l.t}</b><span>{l.d}</span></a></li>)}</ul>
+  </div></section></Public>;
+}
