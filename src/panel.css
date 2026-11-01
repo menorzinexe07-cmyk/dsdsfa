@@ -300,3 +300,7 @@
 @media (max-width: 520px) { .dash .dopts > div { grid-template-columns: 1fr; } .dash .pm-in { padding: 18px; } .dash .pm-foot .btn { flex: 1; } }
 
 .dash .dbody textarea.input { height: auto; min-height: 96px; padding: 12px 14px; resize: vertical; line-height: 1.5; }
+
+.dash .pact { display: flex; gap: 8px; padding-top: 4px; }
+.dash .pfile .lbl em { color: var(--p-dim); font-style: normal; font-weight: 400; }
+.dash .pfile .row { gap: 8px; }
