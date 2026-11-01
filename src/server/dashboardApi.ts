@@ -18,7 +18,7 @@ export async function audit(actor: string, action: string, target?: string, meta
 const integrationStatus = (i: any) =>
   !i?.last_request_at ? "aguardando" : Date.now() - Date.parse(i.last_request_at) < 7 * 864e5 ? "ativa" : "sem_eventos_recentes";
 
-async function owner(req: Request, botId: string) {
+export async function owner(req: Request, botId: string) {
   const r = await requireBotOwner(req, botId);
   if (r.status === 401) return { err: json({ error: "session_expired" }, 401) };
   if (r.status === 404) return { err: json({ error: "bot_not_found" }, 404) };
@@ -51,7 +51,7 @@ function shardFail(e: unknown) {
 }
 const lastPower = new Map<string, number>();
 
-const writeGuard = (req: Request) => (sameOrigin(req) ? null : json({ error: "bad_origin" }, 403));
+export const writeGuard = (req: Request) => (sameOrigin(req) ? null : json({ error: "bad_origin" }, 403));
 
 export const userRoutes: Route[] = [
   ["GET", /^\/api\/me$/, async (req) => {
