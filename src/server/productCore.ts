@@ -48,17 +48,51 @@ export async function parseProductForm(req: Request): Promise<FormResult> {
   return { ok: true, ...p.data, file: { bytes, ...kind } };
 }
 
-/** Produto como o bot manda no listproducts. Campos de texto longos são cortados em vez de recusar a lista inteira. */
+/** `null` vindo do bot vale como "não informado" (muitos bots mandam null em vez de omitir o campo). */
+const orUndef = <T extends z.ZodTypeAny>(t: T) => z.preprocess((v) => (v === null ? undefined : v), t);
+
+/** Produto como o bot manda no listproducts. Texto longo é cortado; banner_url inválido (não-https) é ignorado em vez de recusar o produto. */
 const botProduct = z.object({
-  id: z.union([z.string(), z.number()]).transform(String).pipe(z.string().min(1).max(100)),
-  site_id: z.string().uuid().optional(),
-  name: z.string().trim().min(1).transform((s) => s.slice(0, 80)),
-  description: z.string().trim().optional().default("").transform((s) => s.slice(0, 1000)),
-  delivery_type: z.enum(["automatic", "manual", "automatico", "automático"]).optional().default("automatic")
+  id: z.union([z.string(), z.number()]).transform(String).pipe(z.string().trim().min(1, "id vazio").max(100, "id com mais de 100 caracteres")),
+  site_id: orUndef(z.string().uuid("site_id precisa ser um UUID").optional()),
+  name: z.string({ error: "name é obrigatório (texto)" }).trim().min(1, "name vazio").transform((x) => x.slice(0, 80)),
+  description: orUndef(z.string().trim().optional().default("")).transform((x) => x.slice(0, 1000)),
+  delivery_type: orUndef(z.enum(["automatic", "manual", "automatico", "automático"]).optional().default("automatic"))
     .transform((v): "automatic" | "manual" => (v === "manual" ? "manual" : "automatic")),
-  banner_url: z.union([z.string().url().startsWith("https://").max(500), z.literal("")]).optional(),
+  banner_url: orUndef(z.string().optional()).transform((u) => {
+    if (u === undefined) return undefined;
+    try { const x = new URL(u); return x.protocol === "https:" && u.length <= 500 ? u : ""; } catch { return ""; }
+  }),
 });
-export const listProductsSchema = z.object({ products: z.array(botProduct).max(MAX_PRODUCTS_PER_BOT), replace: z.boolean().optional().default(false) });
+export type BotProduct = z.infer<typeof botProduct>;
+
+export type ListParse =
+  | { ok: true; products: BotProduct[]; replace: boolean; rejected: { index: number; id?: string; errors: string[] }[] }
+  | { ok: false; status: number; error: string; message: string; rejected?: { index: number; id?: string; errors: string[] }[] };
+
+/** Valida o corpo do listproducts item a item: um produto ruim não derruba a lista inteira e o erro aponta o campo exato. */
+export function parseListProducts(body: unknown): ListParse {
+  const root = Array.isArray(body) ? { products: body } : body; // aceita também a lista "pelada": [ {...}, {...} ]
+  if (!root || typeof root !== "object" || !Array.isArray((root as any).products))
+    return { ok: false, status: 422, error: "validation_error", message: 'O corpo precisa ser {"products": [ ... ]} (products é uma lista).' };
+  const { products, replace } = root as { products: unknown[]; replace?: unknown };
+  if (replace !== undefined && replace !== null && typeof replace !== "boolean")
+    return { ok: false, status: 422, error: "validation_error", message: "replace precisa ser true ou false." };
+  if (products.length > MAX_PRODUCTS_PER_BOT)
+    return { ok: false, status: 422, error: "validation_error", message: `Envie no máximo ${MAX_PRODUCTS_PER_BOT} produtos por vez (recebi ${products.length}).` };
+
+  const ok: BotProduct[] = [], rejected: { index: number; id?: string; errors: string[] }[] = [];
+  products.forEach((raw, index) => {
+    const r = botProduct.safeParse(raw);
+    if (r.success) return void ok.push(r.data);
+    const id = raw && typeof raw === "object" && (typeof (raw as any).id === "string" || typeof (raw as any).id === "number") ? String((raw as any).id) : undefined;
+    const errors = r.error.issues.map((i) => `${i.path.join(".") || "(item)"}: ${i.code === "invalid_union" || i.message === "Invalid input" ? "valor inválido (id precisa ser texto ou número)" : i.message}`);
+    rejected.push({ index, id, errors: [...new Set(errors)] });
+  });
+  if (products.length && !ok.length)
+    return { ok: false, status: 422, error: "validation_error", message: "Nenhum produto da lista é válido.", rejected: rejected.slice(0, 20) };
+  return { ok: true, products: ok, replace: replace === true, rejected: rejected.slice(0, 20) };
+}
 
 /** Assinatura do envio ao bot: HMAC-SHA256 de "<timestamp>.<corpo>" com o segredo compartilhado. */
 export const signPayload = (secret: string, ts: string, body: string) =>
