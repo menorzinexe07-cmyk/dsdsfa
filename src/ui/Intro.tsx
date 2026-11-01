@@ -14,7 +14,7 @@ const DURACAO_LOGO = 2200; // ms até a cortina começar a subir
 const DURACAO_SAIDA = 900; // ms da cortina subindo
 
 // useLayoutEffect no navegador evita o "piscar" do site antes da animação; no servidor cai pro useEffect
-const useIso = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const useIso = typeof window !== "undefined" ? useLayoutEffect : useEffect; 
 
 type Fase = "off" | "in" | "out";
 
