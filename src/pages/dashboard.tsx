@@ -16,6 +16,7 @@ function BotCard({ b }: { b: any }) {
   return <a className="card bot clickable" href={botHref(b.bot_id)}>
     <div className="row">{b.avatar_url ? <img src={b.avatar_url} alt="" className="bav" /> : <span className="bav ph">{(b.name ?? "?")[0]}</span>}
       <div><h3>{b.name}</h3><small>ID interno: {b.bot_id}</small></div></div>
+    {b.owners && <p className="owners">Dono: {b.owners.length ? b.owners.map((o: any) => o.name).join(", ") : "sem dono vinculado"}</p>}
     <dl><dt>Adquirido em</dt><dd>{dt(b.acquired_at)}</dd><dt>Licença</dt><dd><Badge s={b.license_status} /></dd>
       <dt>Integração</dt><dd><Badge s={b.integration.status} /></dd></dl>
     <span className="btn solid">Gerenciar</span></a>;
@@ -34,9 +35,23 @@ export function DashboardHome() {
 }
 
 export function DashboardBots() {
-  const q = useApi<any>("/api/bots");
-  return <Dash><h1>Meus bots</h1><Async q={q}>{(d) => d.bots.length
-    ? <div className="grid3">{d.bots.map((b: any) => <BotCard key={b.bot_id} b={b} />)}</div> : <NoBots />}</Async></Dash>;
+  const me = useApi<any>("/api/me");
+  const [all, setAll] = useState(false);
+  const [term, setTerm] = useState("");
+  const isAdm = !!me.data?.is_admin;
+  const q = useApi<any>(all && isAdm ? "/api/bots?all=1" : "/api/bots");
+  const norm = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const match = (b: any) => { const t = norm(term.trim()); if (!t) return true;
+    return norm(`${b.name ?? ""} ${b.bot_id} ${(b.owners ?? []).map((o: any) => `${o.name} ${o.discord_id}`).join(" ")}`).includes(t); };
+  return <Dash><div className="row between"><div><h1>{all && isAdm ? "Todos os bots" : "Meus bots"}</h1>
+      {all && isAdm && <p className="muted">Como administrador, você vê os bots de todos os clientes e pode abrir o painel de qualquer um. Alterações feitas neles ficam na auditoria.</p>}</div>
+    {isAdm && <div className="seg" role="group" aria-label="Quais bots mostrar">
+      <button className={!all ? "on" : ""} aria-pressed={!all} onClick={() => setAll(false)}>Meus bots</button>
+      <button className={all ? "on" : ""} aria-pressed={all} onClick={() => setAll(true)}>Todos os bots</button></div>}</div>
+    {all && isAdm && <input className="input" style={{ margin: "18px 0" }} aria-label="Buscar bots" placeholder="Buscar por nome do bot, ID ou dono" value={term} onChange={(e) => setTerm(e.target.value)} />}
+    <Async q={q}>{(d) => { const list = d.bots.filter(match);
+      return d.bots.length ? (list.length ? <div className="grid3" style={{ marginTop: all ? 0 : 20 }}>{list.map((b: any) => <BotCard key={b.bot_id} b={b} />)}</div> : <Empty>Nenhum bot encontrado para essa busca.</Empty>)
+        : <NoBots />; }}</Async></Dash>;
 }
 
 // ---------- Painel de um bot ----------
@@ -290,6 +305,8 @@ function BetaTab({ title }: { title: string }) {
 export function BotPage({ botId, tab }: { botId: string; tab: "visao-geral" | "clientes" | "vendas" | "produtos" | "ticket" | "configuracoes" }) {
   const info = useApi<any>(`/api/bots/${encodeURIComponent(botId)}`);
   return <Dash bot={{ id: botId, name: info.data?.name }}>
+    {info.data?.as_admin && <div className="state adm" role="status"><b>Você está vendo este painel como administrador.</b>{" "}
+      Dono: {info.data.owners?.length ? info.data.owners.map((o: any) => o.name).join(", ") : "sem dono vinculado"}. Alterações feitas aqui ficam registradas na auditoria.</div>}
     {info.error?.status === 404 ? <div className="empty"><h2>Bot não encontrado</h2><p>Ele não existe ou não está vinculado à sua conta.</p><a className="btn" href="/dashboard/bots">Voltar</a></div> :
       tab === "visao-geral" ? <Overview botId={botId} /> : tab === "clientes" ? <Clients botId={botId} /> :
       tab === "vendas" ? <Sales botId={botId} /> :
