@@ -1,65 +1,146 @@
-import { useCallback, useEffect, useState } from "react";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { z } from "zod";
+import { db } from "./db";
+import { isShardId, syncShardName } from "./shard";
 
-// Cache de leituras (só no navegador, por aba): mostra o último resultado na hora e atualiza em seguida.
-const TTL = 5 * 60_000;
-const memory = new Map<string, { t: number; data: unknown }>();
-const store = () => { try { return window.sessionStorage; } catch { return null; } };
-function cacheGet(path: string): unknown | undefined {
-  const m = memory.get(path); if (m && Date.now() - m.t < TTL) return m.data;
-  try { const raw = store()?.getItem("zy:" + path); if (raw) { const v = JSON.parse(raw); if (Date.now() - v.t < TTL) { memory.set(path, v); return v.data; } } } catch { /* ignora */ }
-}
-function cacheSet(path: string, data: unknown) {
-  const v = { t: Date.now(), data }; memory.set(path, v);
-  try { store()?.setItem("zy:" + path, JSON.stringify(v)); } catch { /* cota cheia: tudo bem */ }
-}
-export function cacheClear() {
-  memory.clear();
-  try { const s = store(); if (s) Object.keys(s).filter((k) => k.startsWith("zy:")).forEach((k) => s.removeItem(k)); } catch { /* ignora */ }
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+export const json = (b: unknown, status = 200) =>
+  new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
+
+// Rate limit simples em memória (por credencial). Em produção com várias instâncias, use Redis/Upstash.
+const hits = new Map<string, number[]>();
+function limited(key: string, max = 120, windowMs = 60_000) {
+  const now = Date.now(), arr = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  arr.push(now); hits.set(key, arr);
+  return arr.length > max;
 }
 
-export class ApiError extends Error {
-  constructor(public status: number, public code: string) { super(code); }
+/** Cria credencial. Retorne `secret` UMA vez e nunca mais. */
+export async function createCredential(name: string, botIds: string[]) {
+  const secret = "zy_" + randomBytes(32).toString("base64url");
+  await db.from("api_credentials").insert({
+    name, key_prefix: secret.slice(0, 8), key_hash: sha256(secret), bot_ids: botIds,
+  });
+  return secret;
 }
 
-export async function api<T = any>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  if (init?.method && init.method !== "GET") cacheClear(); // qualquer alteração invalida o cache
-  let r: Response;
-  try {
-    r = await fetch(path, { credentials: "same-origin", ...init,
-      headers: { ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }), ...init?.headers }, // com arquivo, o navegador define o content-type (boundary)
-      body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body });
-  } catch { throw new ApiError(0, "network"); }
-  const body = await r.json().catch(() => null);
-  if (!r.ok) throw new ApiError(r.status, body?.error ?? "erro");
-  return body as T;
+export async function authenticate(req: Request, botId?: string) {
+  const m = /^Bearer (zy_[A-Za-z0-9_-]{20,})$/.exec(req.headers.get("authorization") ?? "");
+  if (!m) return { err: json({ error: "unauthorized" }, 401) };
+  const { data: cred } = await db.from("api_credentials").select("id,bot_ids,last_used_at")
+    .eq("key_hash", sha256(m[1])).is("revoked_at", null).maybeSingle();
+  if (!cred) return { err: json({ error: "unauthorized" }, 401) };
+  if (limited(cred.id)) return { err: json({ error: "rate_limited" }, 429) };
+  if (botId && !cred.bot_ids.includes("*") && !cred.bot_ids.includes(botId))
+    return { err: json({ error: "forbidden" }, 403) };
+  if (!cred.last_used_at || Date.now() - Date.parse(cred.last_used_at) > 60_000) // no máx. 1 gravação por minuto
+    await db.from("api_credentials").update({ last_used_at: new Date().toISOString() }).eq("id", cred.id);
+  return { cred };
 }
 
-export function useApi<T = any>(path: string | null) {
-  const [s, set] = useState<{ data?: T; error?: ApiError; loading: boolean }>({ loading: !!path });
-  const load = useCallback(() => {
-    if (!path) return;
-    set((x) => ({ ...x, loading: true, error: undefined }));
-    api<T>(path).then((data) => { cacheSet(path, data); set({ data, loading: false }); })
-      .catch((error) => set({ error, loading: false }));
-  }, [path]);
-  useEffect(() => { // depois de montar (evita divergir do HTML do servidor): mostra o cache enquanto atualiza
-    if (!path) return;
-    const hit = cacheGet(path) as T | undefined;
-    if (hit !== undefined) set((x) => (x.data === undefined ? { ...x, data: hit } : x));
-  }, [path]);
-  useEffect(() => { load(); }, [load]);
-  return { ...s, reload: load };
+const snowflake = z.string().regex(/^\d{17,20}$/);
+const id = z.string().min(1).max(100);
+const money = z.number().nonnegative().max(1_000_000_000).nullable().optional();
+const iso = z.string().datetime();
+
+const purchaseSchema = z.object({
+  event_id: id, bot_id: id, discord_user_id: snowflake, bot_name: z.string().max(100).optional(),
+  purchase_id: id, status: z.enum(["confirmed", "pending", "canceled", "refunded"]), purchased_at: iso,
+});
+const saleSchema = z.object({
+  event_id: id, bot_id: id, sale_id: id,
+  customer: z.object({ discord_user_id: snowflake.optional(), name: z.string().max(100).optional(),
+    icon: z.string().url().startsWith("https://").max(500).optional() }).default({}),
+  product: z.object({ id: id.optional(), name: z.string().max(200).optional() }).default({}),
+  amount_gross: money, fees: money, amount_net: money,
+  currency: z.string().regex(/^[A-Z]{3}$/).default("BRL"),
+  payment_method: z.string().max(40).optional(), gateway: z.string().max(40).optional(),
+  status: z.enum(["approved", "pending", "canceled", "refunded"]), sold_at: iso,
+});
+
+async function ingest(req: Request, schema: z.ZodTypeAny, fn: "ingest_purchase" | "ingest_sale") {
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) return json({ error: "validation_error", details: parsed.error.flatten() }, 422);
+  const p = parsed.data as any;
+  const a = await authenticate(req, p.bot_id);
+  if (a.err) return a.err;
+  const { data, error } = await db.rpc(fn, { p, p_cred: a.cred!.id });
+  if (error) {
+    const known = error.message.includes("bot_not_found");
+    await db.from("api_events").insert({ event_id: `${p.event_id}:err:${Date.now()}`, credential_id: a.cred!.id,
+      type: fn, bot_id: p.bot_id, outcome: "error", error: error.message.slice(0, 300) });
+    return json({ error: known ? "bot_not_found" : "internal_error" }, known ? 404 : 500);
+  }
+  const dup = String(data).startsWith("duplicate");
+  return json({ result: data, duplicate: dup }, dup ? 200 : 201); // reenvio é seguro
 }
 
-export const errMsg = (e: ApiError) =>
-  e.status === 0 ? "Falha de comunicação com o servidor. Verifique sua conexão e tente novamente."
-  : e.status === 401 ? "Sua sessão expirou. Entre novamente."
-  : e.status === 404 ? "Bot não encontrado ou sem permissão de acesso."
-  : e.status === 429 ? "Muitas requisições. Aguarde um instante."
-  : "Algo deu errado. Tente novamente em instantes.";
+export async function handlePurchase(req: Request) {
+  const copy = req.clone();
+  const res = await ingest(req, purchaseSchema, "ingest_purchase");
+  if (res.ok) { // compra aceita: busca o nome real do app na Shard Cloud (melhor esforço)
+    const botId = (await copy.json().catch(() => null))?.bot_id;
+    if (typeof botId === "string" && isShardId(botId)) await syncShardName(botId);
+  }
+  return res;
+}
+export const handleSale = (req: Request) => ingest(req, saleSchema, "ingest_sale");
 
-export const brl = (n: number | null | undefined) =>
-  n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-export const dt = (s?: string | null) => (s ? new Date(s).toLocaleString("pt-BR") : "—");
-export const avatarUrl = (id: string, hash?: string | null) =>
-  hash ? `https://cdn.discordapp.com/avatars/${id}/${hash}.png?size=64` : "https://cdn.discordapp.com/embed/avatars/0.png";
+export async function handleSaleStatus(req: Request, botId: string, saleId: string) {
+  const a = await authenticate(req, botId);
+  if (a.err) return a.err;
+  const parsed = z.object({ status: z.enum(["approved", "pending", "canceled", "refunded"]) })
+    .safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return json({ error: "validation_error" }, 422);
+  const { data, error } = await db.rpc("update_sale_status",
+    { p_bot: botId, p_sale: saleId, p_status: parsed.data.status, p_cred: a.cred!.id });
+  if (error) return json({ error: "internal_error" }, 500);
+  return data === "not_found" ? json({ error: "not_found" }, 404) : json({ result: data });
+}
+
+export const handleHealth = () => json({ ok: true, ts: new Date().toISOString() });
+
+// ---------- POST /venda/:botId/salles  (formato simples em português) ----------
+const vendaSchema = z.object({
+  id_venda: id.optional(),                       // recomendado: evita duplicar se reenviar
+  valor_liquido: z.number().nonnegative().max(1_000_000_000),
+  valor_bruto: money, taxas: money,
+  cliente: z.object({
+    id: snowflake,
+    nome: z.string().trim().min(1).max(100),
+    icone: z.string().url().startsWith("https://").max(500).optional(),
+  }),
+  produto: z.object({ id: id.optional(), nome: z.string().trim().min(1).max(200) }),
+  metodo_pagamento: z.string().max(40).optional(),
+  gateway: z.string().max(40).optional(),
+  status: z.enum(["approved", "pending", "canceled", "refunded"]).default("approved"),
+  vendido_em: iso.optional(),
+});
+
+export async function handleVenda(req: Request, botId: string) {
+  const a = await authenticate(req, botId);
+  if (a.err) return a.err;
+  const parsed = vendaSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return json({ error: "validation_error", details: parsed.error.flatten() }, 422);
+  const v = parsed.data;
+  const saleId = v.id_venda ?? `auto_${randomUUID()}`;
+  const p = {
+    event_id: `venda:${botId}:${saleId}`, bot_id: botId, sale_id: saleId,
+    customer: { discord_user_id: v.cliente.id, name: v.cliente.nome, icon: v.cliente.icone },
+    product: { id: v.produto.id, name: v.produto.nome },
+    amount_gross: v.valor_bruto ?? null, fees: v.taxas ?? null, amount_net: v.valor_liquido,
+    currency: "BRL", status: v.status, sold_at: v.vendido_em ?? new Date().toISOString(),
+    payment_method: v.metodo_pagamento, gateway: v.gateway,
+  };
+  const { data, error } = await db.rpc("ingest_sale", { p, p_cred: a.cred!.id });
+  if (error) {
+    const nf = error.message.includes("bot_not_found");
+    await db.from("api_events").insert({ event_id: `${p.event_id}:err:${Date.now()}`, credential_id: a.cred!.id,
+      type: "sale", bot_id: botId, outcome: "error", error: error.message.slice(0, 300) });
+    return json({ error: nf ? "bot_not_found" : "internal_error" }, nf ? 404 : 500);
+  }
+  const dup = String(data).startsWith("duplicate");
+  return json({ result: data, id_venda: saleId, duplicate: dup, idempotente: !!v.id_venda }, dup ? 200 : 201);
+}
