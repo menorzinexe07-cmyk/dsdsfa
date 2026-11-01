@@ -1,5 +1,6 @@
 import { authenticate, handleHealth, handlePurchase, handleSale, handleSaleStatus, handleVenda, json } from "./api";
 import { adminRoutes } from "./adminApi";
+import { handleGetProducts, handleListProducts, productRoutes } from "./productsApi";
 import { loginRedirect, logout, logoutEverywhere } from "./auth";
 import { sameOrigin, userRoutes, type Route } from "./dashboardApi";
 import { getStats, listCustomers, listSales } from "./queries";
@@ -27,6 +28,9 @@ const m2m: Route[] = [
     const a = await authenticate(req, m[1]); if (a.err) return a.err;
     return json(await listSales(m[1], new URL(req.url).searchParams));
   }],
+  // produtos: o bot envia a lista dele (listproducts) e lê o que foi criado no site
+  ["POST", /^\/api\/v1\/apps\/([^/]+)\/listproducts$/, (req, m) => handleListProducts(req, decodeURIComponent(m[1]))],
+  ["GET", /^\/api\/v1\/apps\/([^/]+)\/products$/, (req, m) => handleGetProducts(req, decodeURIComponent(m[1]))],
   ["GET", /^\/api\/v1\/apps\/([^/]+)\/stats$/, async (req, m) => {
     const a = await authenticate(req, m[1]); if (a.err) return a.err;
     return json(await getStats(m[1], new URL(req.url).searchParams));
@@ -53,7 +57,7 @@ const auth: Route[] = [
   ["POST", /^\/api\/auth\/logout$/, (req) => (sameOrigin(req) ? logout(req) : json({ error: "bad_origin" }, 403))],
 ];
 
-const routes = [...m2m, ...venda, ...auth, ...userRoutes, ...adminRoutes];
+const routes = [...m2m, ...venda, ...auth, ...userRoutes, ...productRoutes, ...adminRoutes];
 
 /** Monte em um único catch-all: src/routes/api.$.ts */
 export async function handleApi(req: Request): Promise<Response> {
