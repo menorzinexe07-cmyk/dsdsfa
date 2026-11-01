@@ -62,7 +62,7 @@ function ListTab({ kind, notify }: { kind: string; notify: Notify }) {
           className={[c.num ? "num" : "", c.kind === "date" ? "nowrap" : "", c.kind === "json" || c.k === "error" ? "clip" : ""].join(" ").trim()}><Cell c={c} r={r} /></td>)}
         {kind === "credentials" && <td className="act">{!r.revoked_at && <button className="btn sm danger"
           onClick={() => confirm(`Revogar a credencial "${r.name}"? Quem usa essa chave perde o acesso na hora.`) && act(() => api(`/api/admin/credentials/${r.id}/revoke`, { method: "POST" }), "Credencial revogada.")}>Revogar</button>}</td>}
-        {kind === "bots" && <td className="act"><select className="input auto" aria-label={`Licença de ${r.name}`} value={r.license_status}
+        {kind === "bots" && <td className="act"><a className="btn sm" style={{ marginRight: 8 }} href={`/dashboard/bots/${encodeURIComponent(r.bot_id)}/visao-geral`}>Abrir painel</a><select className="input auto" aria-label={`Licença de ${r.name}`} value={r.license_status}
           onChange={(e) => act(() => api(`/api/admin/bots/${encodeURIComponent(r.bot_id)}`, { method: "PATCH", json: { license_status: e.target.value } }), "Licença atualizada.")}>
           <option value="active">Ativa</option><option value="suspended">Suspensa</option><option value="expired">Expirada</option></select></td>}
       </tr>)}</tbody></table></div>
