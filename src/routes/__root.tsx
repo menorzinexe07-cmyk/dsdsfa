@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import css from "../styles.css?url";
 import panelCss from "../panel.css?url";
+import { NotFound } from "../pages/public";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -27,7 +28,5 @@ export const Route = createRootRoute({
       <body><Outlet /><Scripts /></body>
     </html>
   ),
-  notFoundComponent: () => (
-    <div style={{ padding: 60, textAlign: "center" }}><h1>Página não encontrada</h1><a href="/">Voltar ao início</a></div>
-  ),
+  notFoundComponent: NotFound,
 });
