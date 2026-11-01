@@ -651,3 +651,40 @@ body .nf-links a { display: grid; gap: 4px; height: 100%; padding: 18px 20px; bo
 body .nf-links a:hover { border-color: var(--t-line2); background: var(--t-panel2); }
 body .nf-links b { color: var(--t-tx); }
 body .nf-links span { color: var(--t-dim); font-size: 0.9rem; line-height: 1.45; }
+
+/* ───── página do produto (/zyrasallers) ───── */
+body .pd-hero { padding-block: clamp(56px, 8vw, 104px) clamp(40px, 6vw, 72px); overflow: hidden; }
+body .pd-hero .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
+body .pd-copy h1 { margin-top: 18px; font-size: clamp(3rem, 7.4vw, 5.6rem); }
+body .pd-copy h1 em { display: block; margin-top: 14px; font-size: clamp(1.3rem, 2.6vw, 2rem); line-height: 1.15; letter-spacing: -0.03em; }
+body .pd-copy .lead { margin-top: 22px; max-width: 46ch; font-size: 1.1rem; color: var(--t-mut); }
+body .pd-copy .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+body .pd-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 38px 0 0; padding: 0; list-style: none; max-width: 520px; }
+body .pd-stats li { display: grid; gap: 3px; align-content: start; padding: 0 clamp(12px, 2vw, 22px); border-left: 1px solid var(--t-line); }
+body .pd-stats li:first-child { padding-left: 0; border-left: 0; }
+body .pd-stats b { color: var(--t-tx); font-size: 1.05rem; letter-spacing: -0.02em; line-height: 1.25; }
+body .pd-stats span { color: var(--t-dim); font-size: 0.82rem; line-height: 1.4; }
+@media (max-width: 480px) { body .pd-stats { grid-template-columns: minmax(0, 1fr); gap: 16px; } body .pd-stats li { padding: 0; border-left: 0; } }
+@media (max-width: 900px) { body .pd-hero .wrap { grid-template-columns: minmax(0, 1fr); } }
+
+body .pd-sub { position: sticky; top: 76px; z-index: 40; border-block: 1px solid var(--t-line); background: rgba(0, 0, 0, 0.82); backdrop-filter: blur(12px); }
+body .pd-sub .wrap { display: flex; gap: 6px; padding-block: 10px; overflow-x: auto; scrollbar-width: none; }
+body .pd-sub .wrap::-webkit-scrollbar { display: none; }
+body .pd-sub a { flex: none; padding: 8px 16px; border-radius: 999px; color: var(--t-mut); font-size: 0.9rem; text-decoration: none; transition: color 0.15s, background 0.15s; }
+body .pd-sub a:hover { color: var(--t-tx); background: rgba(255, 255, 255, 0.05); }
+body .pd-sub a.on { color: #000; background: #fff; font-weight: 600; }
+body #como-funciona, body #funcionalidades, body #pagamentos, body #painel, body #faq { scroll-margin-top: 120px; }
+
+body .pd-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+body .pd-flow li { position: relative; display: grid; gap: 10px; align-content: start; padding: 24px 22px 26px; border-radius: 22px; border: 1px solid var(--t-line); background: var(--t-panel); }
+body .pd-flow li:not(:last-child)::after { content: ""; position: absolute; top: 40px; right: -15px; width: 16px; height: 1px; background: var(--t-line2); }
+body .pd-n { color: var(--t-dim); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+body .pd-tag { justify-self: start; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--t-line2); color: var(--t-mut); font-size: 0.76rem; }
+body .pd-flow h3 { margin-top: 6px; }
+body .pd-flow p { color: var(--t-mut); font-size: 0.93rem; line-height: 1.55; }
+@media (max-width: 1000px) { body .pd-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } body .pd-flow li::after { display: none; } }
+@media (max-width: 560px) { body .pd-flow { grid-template-columns: minmax(0, 1fr); } }
+
+body .pd-cats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+body .pd-cats .chip { text-decoration: none; }
+body .pd-cats .chip b { margin-left: 6px; color: var(--t-tx); font-weight: 600; }
