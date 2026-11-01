@@ -3,6 +3,7 @@ import { INVITE } from "../content";
 import { Dash } from "../ui/Shell";
 import { api, brl, dt, useApi, ApiError } from "../ui/api";
 import { Async, Avatar, Badge, Empty, Kpi, Pager, TrendChart } from "../ui/kit";
+import { Products } from "./products";
 
 const botHref = (id: string, tab = "visao-geral") => `/dashboard/bots/${encodeURIComponent(id)}/${tab}`;
 
@@ -310,6 +311,6 @@ export function BotPage({ botId, tab }: { botId: string; tab: "visao-geral" | "c
     {info.error?.status === 404 ? <div className="empty"><h2>Bot não encontrado</h2><p>Ele não existe ou não está vinculado à sua conta.</p><a className="btn" href="/dashboard/bots">Voltar</a></div> :
       tab === "visao-geral" ? <Overview botId={botId} /> : tab === "clientes" ? <Clients botId={botId} /> :
       tab === "vendas" ? <Sales botId={botId} /> :
-      tab === "produtos" ? <BetaTab title="Produtos" /> : tab === "ticket" ? <BetaTab title="Ticket" /> : <Settings botId={botId} />}
+      tab === "produtos" ? <Products botId={botId} /> : tab === "ticket" ? <BetaTab title="Ticket" /> : <Settings botId={botId} />}
   </Dash>;
 }
