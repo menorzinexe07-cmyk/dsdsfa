@@ -253,9 +253,9 @@ export async function handlePutProduct(req: Request, botId: string, key: string)
 export async function handleDeleteProduct(req: Request, botId: string, key: string) {
   const bad = await botGuard(req, botId); if (bad) return bad;
   const isUuid = /^[0-9a-f-]{36}$/i.test(key);
-  let q = db.from("products").select("id,banner_path").eq("bot_id", botId);
-  q = isUuid ? q.or(`external_id.eq.${key},id.eq.${key}`) : q.eq("external_id", key);
-  const { data } = await q;
+  const porExterno = await db.from("products").select("id,banner_path").eq("bot_id", botId).eq("external_id", key);
+  const porId = isUuid ? await db.from("products").select("id,banner_path").eq("bot_id", botId).eq("id", key) : { data: [] as any[] };
+  const data = [...new Map([...(porExterno.data ?? []), ...(porId.data ?? [])].map((r: any) => [r.id, r])).values()];
   if (!data?.length) return json({ error: "not_found" }, 404);
   await db.from("products").delete().in("id", data.map((r) => r.id));
   const paths = data.map((r) => r.banner_path).filter(Boolean) as string[];
