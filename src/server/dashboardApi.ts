@@ -22,7 +22,23 @@ async function owner(req: Request, botId: string) {
   const r = await requireBotOwner(req, botId);
   if (r.status === 401) return { err: json({ error: "session_expired" }, 401) };
   if (r.status === 404) return { err: json({ error: "bot_not_found" }, 404) };
-  return { uid: r.uid };
+  // admin mexendo em bot de cliente: toda alteração fica registrada na auditoria
+  if (r.asAdmin && req.method !== "GET") await audit(r.uid, "admin.bot_access", botId, { method: req.method, path: new URL(req.url).pathname });
+  return { uid: r.uid, asAdmin: r.asAdmin };
+}
+
+/** Nomes dos donos de cada bot (só para admin). */
+async function ownersOf(botIds: string[]) {
+  const out = new Map<string, { discord_id: string; name: string }[]>();
+  if (!botIds.length) return out;
+  const { data: rows } = await db.from("app_owners").select("bot_id,discord_user_id").in("bot_id", botIds).eq("active", true);
+  const ids = [...new Set((rows ?? []).map((r: any) => r.discord_user_id))];
+  const { data: profs } = ids.length ? await db.from("profiles").select("discord_id,username,global_name").in("discord_id", ids) : { data: [] as any[] };
+  const name = new Map((profs ?? []).map((p: any) => [p.discord_id, p.global_name || p.username || p.discord_id]));
+  for (const r of rows ?? []) {
+    const list = out.get(r.bot_id) ?? []; list.push({ discord_id: r.discord_user_id, name: String(name.get(r.discord_user_id) ?? r.discord_user_id) }); out.set(r.bot_id, list);
+  }
+  return out;
 }
 const SHARD_HTTP: Record<string, number> = { not_configured: 503, auth: 502, not_found: 404, rejected: 502, unavailable: 502 };
 function shardFail(e: unknown) {
@@ -87,6 +103,18 @@ export const userRoutes: Route[] = [
     const uid = await getSessionUser(req);
     if (!uid) return json({ error: "session_expired" }, 401);
     await ensureTestBot(uid);
+    if (new URL(req.url).searchParams.get("all")) { // admin: todos os bots de todos os clientes
+      if (!(await isAdmin(req))) return json({ error: "forbidden" }, 403);
+      const { data: apps } = await db.from("apps").select("bot_id,name,avatar_url,license_status,created_at")
+        .order("created_at", { ascending: false }).limit(500);
+      const ids = (apps ?? []).map((a: any) => a.bot_id);
+      const [{ data: ints }, owners] = await Promise.all([db.from("app_integrations").select("*").in("bot_id", ids), ownersOf(ids)]);
+      return json({ all: true, bots: (apps ?? []).map((a: any) => {
+        const i = (ints ?? []).find((x: any) => x.bot_id === a.bot_id);
+        return { bot_id: a.bot_id, name: a.name, avatar_url: a.avatar_url, license_status: a.license_status, acquired_at: a.created_at,
+          owners: owners.get(a.bot_id) ?? [], integration: { status: integrationStatus(i), last_request_at: i?.last_request_at ?? null } };
+      }) });
+    }
     const mine = await getMyBots(uid);
     const { data: ints } = await db.from("app_integrations").select("*").in("bot_id", mine.map((b) => b.bot_id));
     return json({ bots: mine.map((b: any) => {
@@ -99,7 +127,8 @@ export const userRoutes: Route[] = [
   ["GET", /^\/api\/bots\/([^/]+)$/, async (req, m) => {
     const o = await owner(req, m[1]); if (o.err) return o.err;
     const { data } = await db.from("apps").select("bot_id,name,avatar_url,license_status,created_at").eq("bot_id", m[1]).single();
-    return json(data);
+    if (!o.asAdmin) return json(data);
+    return json({ ...data, as_admin: true, owners: (await ownersOf([m[1]])).get(m[1]) ?? [] });
   }],
 
   ["PATCH", /^\/api\/bots\/([^/]+)$/, async (req, m) => {
