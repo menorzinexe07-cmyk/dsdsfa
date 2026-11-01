@@ -775,39 +775,116 @@ export function Home() {
   </Public>;
 }
 
+const PRODUTO_NAV: [string, string][] = [["como-funciona", "Como funciona"], ["funcionalidades", "Funcionalidades"], ["pagamentos", "Pagamentos"], ["painel", "Painel"], ["faq", "Dúvidas"]];
+
+const FLUXO = [
+  { n: "01", tag: "Discord", t: "O cliente escolhe", d: "O pedido acontece direto no seu servidor, sem o cliente precisar sair do Discord." },
+  { n: "02", tag: "Pagamento", t: "Pix na hora", d: "O bot gera o QR Code e o copia e cola dentro do próprio canal." },
+  { n: "03", tag: "Confirmação", t: "Pagamento confirmado", d: "Nos gateways compatíveis a confirmação é automática. No modo manual, você confere cada pagamento." },
+  { n: "04", tag: "Painel", t: "Venda registrada", d: "Cliente, valor e histórico aparecem no seu painel para você acompanhar." },
+];
+
+/** Menu de âncoras que acompanha a rolagem e destaca a seção que está na tela. */
+function SubNav({ items }: { items: [string, string][] }) {
+  const [ativo, setAtivo] = useState(items[0][0]);
+  const [top, setTop] = useState(76); // o menu do site muda de altura ao rolar: o menu da página acompanha
+  useEffect(() => {
+    const h = document.querySelector("header.nav");
+    const fit = () => setTop(Math.max(0, Math.round(h?.getBoundingClientRect().bottom ?? 76)));
+    fit(); window.addEventListener("scroll", fit, { passive: true }); window.addEventListener("resize", fit);
+    return () => { window.removeEventListener("scroll", fit); window.removeEventListener("resize", fit); };
+  }, []);
+  useEffect(() => {
+    const els = items.map(([id]) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+    const io = new IntersectionObserver((es) => {
+      const v = es.filter((e) => e.isIntersecting).sort((x, y) => x.boundingClientRect.top - y.boundingClientRect.top)[0];
+      if (v) setAtivo(v.target.id);
+    }, { rootMargin: "-25% 0px -65% 0px" });
+    els.forEach((e) => io.observe(e));
+    return () => io.disconnect();
+  }, [items]);
+  return <nav className="pd-sub" aria-label="Nesta página" style={{ top }}><div className="wrap">
+    {items.map(([id, l]) => <a key={id} href={`#${id}`} className={ativo === id ? "on" : ""} aria-current={ativo === id ? "true" : undefined}>{l}</a>)}
+  </div></nav>;
+}
+
 export function Product() {
   const s = useSettings();
   usePageTitle("ZyraSallers");
+  const recursos = useMemo(() => FEATURES.reduce((a, f) => a + f.items.length, 0), []);
 
   return <Public>
-    <Hero
-      pill="Zyra Applications"
-      title="ZyraSallers"
-      lead="Bot brasileiro desenvolvido pela Zyra Applications, focado em vendas automatizadas dentro do Discord. Possui ferramentas para gerenciar pedidos, pagamentos, clientes, divulgação de produtos e administração do servidor."
-      actions={<>
-        <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
-        <a className="btn lg" href="/dashboard">Acessar meu dashboard</a>
-      </>}
-      note={<>Preço informado: <b>{s.price}</b></>}
-    />
-    <Marquee />
+    <section className="pd-hero"><div className="wrap">
+      <div className="pd-copy">
+        <span className="pill"><i aria-hidden="true" /> Zyra Applications</span>
+        <h1>ZyraSallers<em>Vendas automáticas no Discord.</em></h1>
+        <p className="lead">Bot brasileiro focado em vendas dentro do Discord. Ele cuida de pedidos, pagamentos, clientes, divulgação de produtos e da administração do servidor.</p>
+        <div className="actions">
+          <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
+          <a className="btn lg" href="#como-funciona">Ver como funciona</a>
+        </div>
+        <ul className="pd-stats">
+          <li><b>{s.price}</b><span>preço informado</span></li>
+          <li><b>{recursos} recursos</b><span>para vender e administrar</span></li>
+          <li><b>{GATEWAYS.length} modos</b><span>de receber pagamentos</span></li>
+        </ul>
+      </div>
+      <HeroStage />
+    </div></section>
 
-    <section className="sec" id="funcionalidades"><div className="wrap">
+    <SubNav items={PRODUTO_NAV} />
+
+    <section className="sec" id="como-funciona"><div className="wrap">
+      <div className="sec-head" data-reveal>
+        <h2>Como uma venda acontece</h2>
+        <p>Do pedido ao registro no painel, em quatro etapas. A confirmação automática depende do gateway que você usa.</p>
+      </div>
+      <ol className="pd-flow">{FLUXO.map((f, i) => <li key={f.n} data-reveal className={i ? `d${Math.min(i, 3)}` : ""}>
+        <span className="pd-n">{f.n}</span><span className="pd-tag">{f.tag}</span>
+        <h3>{f.t}</h3><p>{f.d}</p></li>)}</ol>
+    </div></section>
+
+    <section className="sec rule" id="funcionalidades"><div className="wrap">
       <div className="sec-head" data-reveal>
         <h2>Funcionalidades</h2>
-        <p>Funcionalidades informadas do produto. A disponibilidade de cada uma depende da configuração real do seu bot.</p>
+        <p>Tudo que o bot oferece, por categoria. A disponibilidade de cada uma depende da configuração real do seu bot.</p>
+        <div className="pd-cats">{FEATURES.map((g) => <a key={g.title} className="chip" href="#funcionalidades">{g.title} <b>{g.items.length}</b></a>)}</div>
       </div>
       <Features />
     </div></section>
 
-    <section className="sec rule"><div className="wrap">
-      <div className="sec-head" data-reveal><h2>Bancos e gateways de pagamento</h2></div>
+    <section className="sec rule" id="pagamentos"><div className="wrap">
+      <div className="sec-head" data-reveal>
+        <h2>Bancos e gateways de pagamento</h2>
+        <p>Escolha entre confirmação automática, leitura de e-mails ou conferência manual.</p>
+      </div>
       <Gateways />
     </div></section>
 
-    <section className="sec rule"><div className="wrap narrow">
-      <div className="sec-head" data-reveal><h2>Perguntas frequentes</h2></div>
-      <FaqList items={s.faq} />
+    <section className="sec rule" id="painel"><div className="wrap">
+      <Bloco titulo="Um painel para cada bot" texto="Entre com o Discord e acompanhe o resultado do seu bot sem depender de comandos."
+        itens={["Faturamento e número de vendas por período", "Lista de clientes e histórico de pedidos", "Controle do bot e da integração em um só lugar"]}>
+        <DashMock />
+      </Bloco>
+    </div></section>
+
+    <section className="sec tight"><div className="wrap"><PriceBox price={s.price} invite={s.invite} /></div></section>
+
+    <section className="sec rule" id="faq"><div className="wrap hm-faq">
+      <div className="hm-faq-side" data-reveal>
+        <h2>Dúvidas frequentes</h2>
+        <p>As perguntas mais comuns sobre o ZyraSallers. Não achou a sua? Pergunte no servidor.</p>
+        <div className="actions">
+          <ExternalLink className="btn lg" href={s.invite}>Entrar no Discord</ExternalLink>
+          <a className="btn lg" href="/faq">Ver todas</a>
+        </div>
+      </div>
+      <FaqList items={s.faq.slice(0, 8)} />
+    </div></section>
+
+    <section className="cta"><div className="wrap">
+      <h2>Pronto para automatizar suas vendas?</h2>
+      <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
     </div></section>
   </Public>;
 }
