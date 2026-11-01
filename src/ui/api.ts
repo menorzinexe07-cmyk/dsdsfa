@@ -26,7 +26,7 @@ export async function api<T = any>(path: string, init?: RequestInit & { json?: u
   let r: Response;
   try {
     r = await fetch(path, { credentials: "same-origin", ...init,
-      headers: { "content-type": "application/json", ...init?.headers },
+      headers: { ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }), ...init?.headers }, // com arquivo, o navegador define o content-type (boundary)
       body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body });
   } catch { throw new ApiError(0, "network"); }
   const body = await r.json().catch(() => null);
