@@ -637,3 +637,17 @@ body .lg-foot a:hover { color: var(--t-tx); }
   body .lg-copy { text-align: left; }
   body .lg-list { margin-top: 24px; }
 }
+
+/* ───── 404 ───── */
+body .nf { padding: clamp(48px, 9vw, 120px) 0 clamp(64px, 9vw, 130px); text-align: center; }
+body .nf-code { font-size: clamp(6.5rem, 24vw, 15rem); font-weight: 800; letter-spacing: -0.07em; line-height: 0.85; color: transparent; -webkit-text-stroke: 2px rgba(255, 255, 255, 0.3); user-select: none; margin-bottom: clamp(14px, 3vw, 30px); }
+body .nf h1 { font-size: clamp(2rem, 4.5vw, 3.2rem); }
+body .nf .lead { max-width: 52ch; margin: 18px auto 0; }
+body .nf-path { padding: 2px 9px; border-radius: 8px; border: 1px solid var(--t-line2); background: var(--t-panel2); color: var(--t-tx); font-size: 0.88em; word-break: break-all; }
+body .nf-hint { max-width: 52ch; margin: 14px auto 0; color: var(--t-dim); font-size: 0.92rem; }
+body .nf .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 30px; }
+body .nf-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; max-width: 980px; margin: clamp(40px, 6vw, 72px) auto 0; padding: 0; list-style: none; text-align: left; }
+body .nf-links a { display: grid; gap: 4px; height: 100%; padding: 18px 20px; border-radius: 18px; border: 1px solid var(--t-line); background: var(--t-panel); text-decoration: none; transition: border-color 0.15s, background 0.15s; }
+body .nf-links a:hover { border-color: var(--t-line2); background: var(--t-panel2); }
+body .nf-links b { color: var(--t-tx); }
+body .nf-links span { color: var(--t-dim); font-size: 0.9rem; line-height: 1.45; }
