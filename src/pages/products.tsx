@@ -12,7 +12,7 @@ const DELIVERY = [
 /** Traduz o código gravado no envio ao bot para uma frase que o cliente entende. */
 function syncText(code?: string | null) {
   if (!code) return "";
-  if (code === "bot_webhook_not_configured") return "O envio automático ao bot ainda não foi configurado. O bot pode buscar este produto pela API.";
+  if (code === "bot_webhook_not_configured") return "Na fila: o bot busca os produtos novos sozinho, em poucos segundos.";
   if (code === "bot_timeout") return "O bot demorou demais para responder.";
   if (code === "bot_unreachable") return "Não foi possível alcançar o bot.";
   if (code.startsWith("bot_http_")) return `O bot recusou o envio (erro ${code.slice(9)}).`;
@@ -115,7 +115,7 @@ function ProductCard({ p, onResend, busy }: { p: any; onResend: () => void; busy
       <p className="pdesc">{p.description}</p>
       <div className="pbadges"><Badge s={p.delivery_type} />{p.source === "bot" ? <span className="badge neutral">Veio do bot</span> : <Badge s={key} />}</div>
       {p.source === "site" && key !== "synced" && <div className="psync"><small>{syncText(p.sync_error)}</small>
-        <button type="button" className="btn sm" disabled={busy} onClick={onResend}>{busy ? "Enviando…" : "Reenviar ao bot"}</button></div>}
+        {p.sync_error !== "bot_webhook_not_configured" && <button type="button" className="btn sm" disabled={busy} onClick={onResend}>{busy ? "Enviando…" : "Reenviar ao bot"}</button>}</div>}
       <small className="pdate">{p.source === "bot" ? "Sincronizado" : "Criado"} em {dt(p.source === "bot" ? p.synced_at ?? p.created_at : p.created_at)}</small>
     </div></article>;
 }
@@ -126,10 +126,13 @@ export function Products({ botId }: { botId: string }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; t: string } | null>(null);
   const [sending, setSending] = useState<string | null>(null);
+  const fila = !!q.data?.items?.some((p: any) => p.source === "site" && p.sync_status === "pending");
+  useEffect(() => { if (!fila) return; const t = setTimeout(q.reload, 10_000); return () => clearTimeout(t); }, [fila, q.data]); // enquanto há produto na fila, confere de novo a cada 10 s
 
   const created = (p: any) => {
     setOpen(false); q.reload();
     setNote(p.sync_status === "synced" ? { ok: true, t: `“${p.name}” foi criado e enviado ao bot.` }
+      : p.sync_error === "bot_webhook_not_configured" ? { ok: true, t: `“${p.name}” foi criado. O bot busca produtos novos sozinho e ele passa para “Enviado ao bot” em instantes.` }
       : { ok: false, t: `“${p.name}” foi criado, mas ainda não chegou ao bot. ${syncText(p.sync_error)}` });
   };
   const resend = async (p: any) => {
