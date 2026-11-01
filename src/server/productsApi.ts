@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { authenticate, json } from "./api";
 import { audit, owner, writeGuard, type Route } from "./dashboardApi";
-import { MAX_PRODUCTS_PER_BOT, listProductsSchema, parseProductForm, signPayload } from "./productCore";
+import { MAX_PRODUCTS_PER_BOT, parseListProducts, parseProductForm, signPayload } from "./productCore";
 
 const BUCKET = "product-banners";
 const COLS = "id,bot_id,external_id,name,description,delivery_type,banner_url,source,sync_status,sync_error,synced_at,created_at";
@@ -107,12 +107,12 @@ export const productRoutes: Route[] = [
 export async function handleListProducts(req: Request, botId: string) {
   const a = await authenticate(req, botId); if (a.err) return a.err;
   if (Number(req.headers.get("content-length") ?? 0) > 1_000_000) return json({ error: "payload_too_large" }, 413);
-  const parsed = listProductsSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return json({ error: "validation_error", details: parsed.error.flatten() }, 422);
+  const parsed = parseListProducts(await req.json().catch(() => null));
+  if (!parsed.ok) return json({ error: parsed.error, message: parsed.message, rejected: parsed.rejected }, parsed.status);
   const { data: app } = await db.from("apps").select("bot_id").eq("bot_id", botId).maybeSingle();
   if (!app) return json({ error: "bot_not_found" }, 404);
 
-  const incoming = [...new Map(parsed.data.products.map((p) => [p.id, p])).values()]; // mesmo id duas vezes: vale o último
+  const incoming = [...new Map(parsed.products.map((p) => [p.id, p])).values()]; // mesmo id duas vezes: vale o último
   const { data: rows } = await db.from("products").select("id,external_id,source,banner_path").eq("bot_id", botId);
   const existing = rows ?? [];
   const byExt = new Map(existing.filter((r) => r.external_id).map((r) => [r.external_id as string, r]));
@@ -139,7 +139,7 @@ export async function handleListProducts(req: Request, botId: string) {
   }
 
   let removed = 0;
-  if (parsed.data.replace) { // o que tem id do bot e sumiu da lista foi apagado no bot
+  if (parsed.replace) { // o que tem id do bot e sumiu da lista foi apagado no bot
     const keep = new Set(incoming.map((p) => p.id));
     const gone = existing.filter((r) => r.external_id && !keep.has(r.external_id));
     if (gone.length) {
@@ -149,7 +149,7 @@ export async function handleListProducts(req: Request, botId: string) {
       removed = gone.length;
     }
   }
-  return json({ result: "ok", received: incoming.length, created: inserts.length, updated: updates.length - failed, failed, removed });
+  return json({ result: "ok", received: incoming.length, created: inserts.length, updated: updates.length - failed, failed, removed, rejected: parsed.rejected });
 }
 
 /** GET /api/v1/apps/:botId/products[?pending=1] — o bot lê os produtos criados no site (ex.: quando o envio automático não está ligado). */
