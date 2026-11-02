@@ -2,7 +2,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { z } from "zod";
 
-export const MAX_BANNER_BYTES = 5 * 1024 * 1024;
+export const MAX_BANNER_BYTES = 4 * 1024 * 1024; // a Vercel recusa requisições acima de 4,5 MB
 export const MAX_PRODUCTS_PER_BOT = 200;       // criar pelo painel / itens por envio
 export const MAX_ROWS_PER_BOT = 500;           // teto total por bot
 export const MAX_BOT_DATA_BYTES = 200_000;     // Campos + Cupom + extras de um produto
@@ -78,24 +78,6 @@ export async function parseProductEditForm(req: Request): Promise<EditForm> {
   const removeBanner = ["1", "true"].includes(String(r.form.get("remove_banner") ?? ""));
   if (!Object.keys(patch).length && !b.banner && !removeBanner) return { ok: false, status: 422, error: "nothing_to_update" };
   return { ok: true, patch: patch as any, banner: b.banner, removeBanner: removeBanner && !b.banner };
-}
-
-/** Acha a URL da imagem na resposta da API de upload: {images:[{url}]}, {url}, {data:{url}}, ["https://..."]... */
-export function extractImageUrl(body: unknown): string | null {
-  const KEYS = ["url", "image_url", "imageUrl", "src", "link", "href", "location"];
-  const ok = (s: unknown): s is string => { if (typeof s !== "string" || s.length > 500) return false; try { return new URL(s).protocol === "https:"; } catch { return false; } };
-  const walk = (v: unknown, depth: number): string | null => {
-    if (depth > 4 || v == null) return null;
-    if (ok(v)) return v;
-    if (Array.isArray(v)) { for (const x of v) { const r = walk(x, depth + 1); if (r) return r; } return null; }
-    if (typeof v === "object") {
-      const o = v as Record<string, unknown>;
-      for (const k of KEYS) if (ok(o[k])) return o[k] as string;
-      for (const k of ["images", "files", "data", "result", "image"]) { const r = walk(o[k], depth + 1); if (r) return r; }
-    }
-    return null;
-  };
-  return walk(body, 0);
 }
 
 // ───────────────────────── formato do bot ─────────────────────────
