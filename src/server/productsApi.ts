@@ -1,18 +1,20 @@
+import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { authenticate, json } from "./api";
 import { audit, owner, writeGuard, type Route } from "./dashboardApi";
 import {
-  MAX_PRODUCTS_PER_BOT, MAX_ROWS_PER_BOT, ackSchema, extractImageUrl, hashBotData, parseListProducts, parseProductEditForm, parseProductForm,
+  MAX_PRODUCTS_PER_BOT, MAX_ROWS_PER_BOT, ackSchema, hashBotData, parseListProducts, parseProductEditForm, parseProductForm,
   parseSingleProduct, signPayload, toBotFormat, type Banner, type BotProduct,
 } from "./productCore";
 
 const COLS = "id,bot_id,external_id,name,description,delivery_type,banner_url,source,sync_status,sync_error,synced_at,created_at,updated_at";
-const FULL = `${COLS},bot_data,deleted_at`;
-const LEGACY_BUCKET = "product-banners"; // banners antigos (antes da API de imagens)
+const FULL = `${COLS},bot_data,deleted_at,banner_path`;
+const BUCKET = "product-banners"; // banners ficam no Storage do próprio Supabase (bucket público)
 const TOMBSTONE_DAYS = 30;                // exclusão que o bot nunca confirmou some depois disso
 
 /** Linha pronta para o painel/JSON: sem os dados internos do bot. */
 const pub = (r: any) => { if (!r) return r; const { bot_data, deleted_at, bot_hash, banner_path, ...rest } = r; return rest; };
+const safeDir = (botId: string) => botId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80);
 const dec = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 
 const hits = new Map<string, number[]>();
@@ -22,21 +24,25 @@ const tooFast = (key: string, max: number) => {
 };
 const lastResend = new Map<string, number>();
 
-// ───────── banner → API de imagens ─────────
+// ───────── banner → Storage do Supabase ─────────
 
-/** Envia o banner para a API de imagens (multipart, campo "image") e devolve a URL https da imagem. */
-async function uploadBanner(b: Banner): Promise<string> {
-  const url = process.env.IMAGE_UPLOAD_URL || "https://zyra-uploads.lovable.app/api/v1/images";
-  const fd = new FormData();
-  fd.append("image", new Blob([b.bytes as BlobPart], { type: b.mime }), `banner.${b.ext}`);
-  const headers: Record<string, string> = {};
-  if (process.env.IMAGE_UPLOAD_KEY) headers.authorization = `Bearer ${process.env.IMAGE_UPLOAD_KEY}`;
-  const r = await fetch(url, { method: "POST", body: fd, headers, redirect: "error", signal: AbortSignal.timeout(25_000) });
-  if (!r.ok) throw new Error(`upload_http_${r.status}`);
-  const u = extractImageUrl(await r.json().catch(() => null));
-  if (!u) throw new Error("upload_no_url");
-  return u;
+/** Sobe o banner para o bucket público e devolve a URL e o caminho (o caminho serve para apagar o arquivo depois). */
+async function uploadBanner(botId: string, b: Banner): Promise<{ url: string; path: string }> {
+  const path = `${safeDir(botId)}/${randomUUID()}.${b.ext}`;
+  const send = () => db.storage.from(BUCKET).upload(path, b.bytes, { contentType: b.mime, upsert: false, cacheControl: "31536000" });
+  let r = await send();
+  if (r.error && /bucket.*not.*found/i.test(r.error.message)) { // a migração 004 não rodou: cria o bucket e tenta de novo
+    await db.storage.createBucket(BUCKET, { public: true, fileSizeLimit: 4 * 1024 * 1024, allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/gif"] });
+    r = await send();
+  }
+  if (r.error) throw new Error(r.error.message);
+  return { url: db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, path };
 }
+/** Apaga arquivos de banner que não são mais usados (sem travar a resposta se falhar). */
+const dropFiles = async (paths: (string | null | undefined)[]) => {
+  const list = paths.filter(Boolean) as string[];
+  if (list.length) await db.storage.from(BUCKET).remove(list).catch(() => {});
+};
 
 // ───────── site → bot (webhook) ─────────
 
@@ -72,7 +78,7 @@ async function pushToBot(p: any, event: Event): Promise<Push> {
 /** Tenta avisar o bot e grava o resultado. Exclusão confirmada pelo bot (2xx) apaga a linha de vez. */
 async function syncProduct(p: any, event: Event) {
   const r = await pushToBot(p, event), now = new Date().toISOString();
-  if (event === "product.deleted" && r.status === "synced") { await db.from("products").delete().eq("id", p.id); return null; }
+  if (event === "product.deleted" && r.status === "synced") { await Promise.all([db.from("products").delete().eq("id", p.id), dropFiles([p.banner_path])]); return null; }
   const patch: any = { sync_status: r.status, sync_error: r.error ?? null, ...(r.status === "synced" ? { synced_at: now } : {}) };
   if (r.external_id && event !== "product.deleted") patch.external_id = r.external_id;
   let res = await db.from("products").update(patch).eq("id", p.id).select(FULL).single();
@@ -99,18 +105,26 @@ export const productRoutes: Route[] = [
     if (tooFast(`create:${o.uid}`, 10)) return json({ error: "rate_limited" }, 429);
     const f = await parseProductForm(req);
     if (!f.ok) return json({ error: f.error, fields: f.fields }, f.status);
-    const { count } = await db.from("products").select("id", { count: "exact", head: true }).eq("bot_id", m[1]).is("deleted_at", null);
-    if ((count ?? 0) >= MAX_PRODUCTS_PER_BOT) return json({ error: "product_limit" }, 409);
 
-    let banner_url = "";
-    if (f.banner) { try { banner_url = await uploadBanner(f.banner); } catch (e) { return failBanner(e); } }
-    const ins = await db.from("products").insert({
-      bot_id: m[1], name: f.name, description: f.description, delivery_type: f.delivery_type,
-      banner_url, source: "site", sync_status: "pending", created_by: o.uid,
-    }).select(FULL).single();
-    if (ins.error || !ins.data) { console.error("[products] insert", ins.error?.message); return json({ error: "internal_error" }, 500); }
-    await audit(o.uid!, "product.create", m[1], { product_id: ins.data.id, name: f.name });
-    return json({ product: pub(await syncProduct(ins.data, "product.created")) }, 201);
+    // contagem e upload do banner ao mesmo tempo
+    const [cnt, up] = await Promise.all([
+      db.from("products").select("id", { count: "exact", head: true }).eq("bot_id", m[1]).is("deleted_at", null),
+      f.banner ? uploadBanner(m[1], f.banner).catch((e: Error) => e) : Promise.resolve(null),
+    ]);
+    if (up instanceof Error) return failBanner(up);
+    if ((cnt.count ?? 0) >= MAX_PRODUCTS_PER_BOT) { await dropFiles([up?.path]); return json({ error: "product_limit" }, 409); }
+
+    const hook = !!process.env.BOT_WEBHOOK_URL, id = randomUUID();
+    // gravar e registrar na auditoria ao mesmo tempo; sem webhook o estado "na fila" já entra gravado (sem segunda gravação)
+    const [ins] = await Promise.all([
+      db.from("products").insert({
+        id, bot_id: m[1], name: f.name, description: f.description, delivery_type: f.delivery_type, banner_url: up?.url ?? "", banner_path: up?.path ?? null,
+        source: "site", sync_status: "pending", sync_error: hook ? null : "bot_webhook_not_configured", created_by: o.uid,
+      }).select(FULL).single(),
+      audit(o.uid!, "product.create", m[1], { product_id: id, name: f.name }),
+    ]);
+    if (ins.error || !ins.data) { console.error("[products] insert", ins.error?.message); await dropFiles([up?.path]); return json({ error: "internal_error" }, 500); }
+    return json({ product: pub(hook ? await syncProduct(ins.data, "product.created") : ins.data) }, 201);
   }],
 
   // editar: só os campos enviados mudam; o bot recebe a alteração (webhook ou busca ?pending=1)
@@ -118,18 +132,30 @@ export const productRoutes: Route[] = [
     const g = writeGuard(req); if (g) return g;
     const o = await owner(req, m[1]); if (o.err) return o.err;
     if (tooFast(`edit:${o.uid}`, 30)) return json({ error: "rate_limited" }, 429);
-    const { data: cur } = await db.from("products").select(FULL).eq("id", m[2]).eq("bot_id", m[1]).is("deleted_at", null).maybeSingle();
-    if (!cur) return json({ error: "not_found" }, 404);
     const f = await parseProductEditForm(req);
     if (!f.ok) return json({ error: f.error, fields: f.fields }, f.status);
 
-    const patch: any = { ...f.patch, sync_status: "pending", sync_error: null, updated_at: new Date().toISOString() };
-    if (f.banner) { try { patch.banner_url = await uploadBanner(f.banner); } catch (e) { return failBanner(e); } }
-    else if (f.removeBanner) patch.banner_url = "";
-    const up = await db.from("products").update(patch).eq("id", cur.id).select(FULL).single();
-    if (up.error || !up.data) { console.error("[products] update", up.error?.message); return json({ error: "internal_error" }, 500); }
-    await audit(o.uid!, "product.update", m[1], { product_id: cur.id, fields: Object.keys(f.patch), banner: f.banner ? "new" : f.removeBanner ? "removed" : undefined });
-    return json({ product: pub(await syncProduct(up.data, "product.updated")) });
+    const trocaBanner = !!f.banner || f.removeBanner;
+    const [up, old] = await Promise.all([
+      f.banner ? uploadBanner(m[1], f.banner).catch((e: Error) => e) : Promise.resolve(null),
+      trocaBanner ? db.from("products").select("banner_path").eq("id", m[2]).eq("bot_id", m[1]).maybeSingle() : Promise.resolve(null),
+    ]);
+    if (up instanceof Error) return failBanner(up);
+
+    const hook = !!process.env.BOT_WEBHOOK_URL;
+    const patch: any = { ...f.patch, sync_status: "pending", sync_error: hook ? null : "bot_webhook_not_configured", updated_at: new Date().toISOString() };
+    if (up) { patch.banner_url = up.url; patch.banner_path = up.path; }
+    else if (f.removeBanner) { patch.banner_url = ""; patch.banner_path = null; }
+    const res = await db.from("products").update(patch).eq("id", m[2]).eq("bot_id", m[1]).is("deleted_at", null).select(FULL).maybeSingle(); // um só passo: existe? atualiza
+    if (res.error) { console.error("[products] update", res.error.message); await dropFiles([up?.path]); return json({ error: "internal_error" }, 500); }
+    if (!res.data) { await dropFiles([up?.path]); return json({ error: "not_found" }, 404); }
+
+    const [row] = await Promise.all([
+      hook ? syncProduct(res.data, "product.updated") : Promise.resolve(res.data),
+      audit(o.uid!, "product.update", m[1], { product_id: m[2], fields: Object.keys(f.patch), banner: up ? "new" : f.removeBanner ? "removed" : undefined }),
+      trocaBanner ? dropFiles([old?.data?.banner_path]) : Promise.resolve(),
+    ]);
+    return json({ product: pub(row) });
   }],
 
   // excluir: some do painel na hora; o bot é avisado e confirma (ack)
@@ -137,14 +163,16 @@ export const productRoutes: Route[] = [
     const g = writeGuard(req); if (g) return g;
     const o = await owner(req, m[1]); if (o.err) return o.err;
     if (tooFast(`edit:${o.uid}`, 30)) return json({ error: "rate_limited" }, 429);
-    const { data: cur } = await db.from("products").select(FULL).eq("id", m[2]).eq("bot_id", m[1]).is("deleted_at", null).maybeSingle();
-    if (!cur) return json({ error: "not_found" }, 404);
-    const now = new Date().toISOString();
-    const up = await db.from("products").update({ deleted_at: now, updated_at: now, sync_status: "pending", sync_error: null }).eq("id", cur.id).select(FULL).single();
-    if (up.error || !up.data) return json({ error: "internal_error" }, 500);
-    await audit(o.uid!, "product.delete", m[1], { product_id: cur.id, name: cur.name });
-    await db.from("products").delete().eq("bot_id", m[1]).lt("deleted_at", new Date(Date.now() - TOMBSTONE_DAYS * 864e5).toISOString()); // limpeza de exclusões antigas
-    await syncProduct(up.data, "product.deleted"); // com webhook, o bot confirma na hora; sem webhook, ele busca em ?pending=1 e dá ack
+    const hook = !!process.env.BOT_WEBHOOK_URL, now = new Date().toISOString();
+    const res = await db.from("products").update({ deleted_at: now, updated_at: now, sync_status: "pending", sync_error: hook ? null : "bot_webhook_not_configured" })
+      .eq("id", m[2]).eq("bot_id", m[1]).is("deleted_at", null).select(FULL).maybeSingle(); // um só passo: existe? marca como excluído
+    if (res.error) return json({ error: "internal_error" }, 500);
+    if (!res.data) return json({ error: "not_found" }, 404);
+    await Promise.all([
+      audit(o.uid!, "product.delete", m[1], { product_id: m[2], name: res.data.name }),
+      db.from("products").delete().eq("bot_id", m[1]).lt("deleted_at", new Date(Date.now() - TOMBSTONE_DAYS * 864e5).toISOString()), // limpeza de exclusões antigas
+      hook ? syncProduct(res.data, "product.deleted") : Promise.resolve(), // com webhook o bot confirma na hora; sem webhook ele busca em ?pending=1 e dá ack
+    ]);
     return json({ ok: true });
   }],
 
@@ -214,7 +242,7 @@ async function applyFromBot(botId: string, list: BotProduct[], replace: boolean)
     if (gone.length) {
       await db.from("products").delete().in("id", gone.map((r) => r.id));
       const paths = gone.map((r) => r.banner_path).filter(Boolean) as string[];
-      if (paths.length) await db.storage.from(LEGACY_BUCKET).remove(paths).catch(() => {});
+      if (paths.length) await db.storage.from(BUCKET).remove(paths).catch(() => {});
       removed = gone.length;
     }
   }
@@ -259,7 +287,7 @@ export async function handleDeleteProduct(req: Request, botId: string, key: stri
   if (!data?.length) return json({ error: "not_found" }, 404);
   await db.from("products").delete().in("id", data.map((r) => r.id));
   const paths = data.map((r) => r.banner_path).filter(Boolean) as string[];
-  if (paths.length) await db.storage.from(LEGACY_BUCKET).remove(paths).catch(() => {});
+  if (paths.length) await db.storage.from(BUCKET).remove(paths).catch(() => {});
   return json({ result: "ok", removed: data.length });
 }
 
@@ -288,8 +316,9 @@ export async function handleAckProducts(req: Request, botId: string) {
   if (!parsed.success) return json({ error: "validation_error", message: 'Envie {"site_ids": ["<uuid>"]} ou {"acks": [{"site_id": "<uuid>", "external_id": "...", "ok": true}]}.' }, 422);
   const items = [...(parsed.data.site_ids ?? []).map((site_id) => ({ site_id })), ...(parsed.data.acks ?? [])] as { site_id: string; external_id?: string; ok?: boolean; error?: string }[];
   if (!items.length) return json({ error: "validation_error", message: "Nada para confirmar." }, 422);
-  const { data: rows } = await db.from("products").select("id,deleted_at").eq("bot_id", botId).in("id", items.map((i) => i.site_id));
+  const { data: rows } = await db.from("products").select("id,deleted_at,banner_path").eq("bot_id", botId).in("id", items.map((i) => i.site_id));
   const byId = new Map((rows ?? []).map((r) => [r.id as string, r]));
+  const arquivos: (string | null)[] = [];
   const now = new Date().toISOString();
   let confirmed = 0, removed = 0, failed = 0, unknown = 0;
   for (const it of items) {
@@ -298,10 +327,11 @@ export async function handleAckProducts(req: Request, botId: string) {
     if (it.ok === false) {
       await db.from("products").update({ sync_status: "failed", sync_error: `bot_error:${(it.error ?? "").slice(0, 100)}` }).eq("id", row.id); failed++; continue;
     }
-    if (row.deleted_at) { await db.from("products").delete().eq("id", row.id); removed++; continue; }
+    if (row.deleted_at) { await db.from("products").delete().eq("id", row.id); arquivos.push(row.banner_path); removed++; continue; }
     let r = await db.from("products").update({ sync_status: "synced", sync_error: null, synced_at: now, ...(it.external_id ? { external_id: it.external_id } : {}) }).eq("id", row.id);
     if (r.error && it.external_id) r = await db.from("products").update({ sync_status: "synced", sync_error: null, synced_at: now }).eq("id", row.id); // id do bot já em uso
     if (r.error) failed++; else confirmed++;
   }
+  await dropFiles(arquivos);
   return json({ result: "ok", confirmed, removed, failed, unknown });
 }
