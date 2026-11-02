@@ -304,3 +304,6 @@
 .dash .pact { display: flex; gap: 8px; padding-top: 4px; }
 .dash .pfile .lbl em { color: var(--p-dim); font-style: normal; font-weight: 400; }
 .dash .pfile .row { gap: 8px; }
+
+.dash .card.pcard.saving { opacity: 0.72; }
+.dash .badge.neutral .spin { width: 10px; height: 10px; border-width: 2px; margin-right: 4px; vertical-align: -1px; }
