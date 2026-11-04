@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE } from "../content";
+import { FAQ_DEFAULT, FEATURES, GATEWAYS, INVITE, TOTAL_MENUS, TOTAL_SLASH } from "../content";
 import { Public } from "../ui/Shell";
 import { avatarUrl, useApi } from "../ui/api";
+import { AnelCta, CenaTopo, Comandos, Demonstracao, Faixa, Linha, Numeros, Rotativo, useSpotlight } from "./home-extras";
 
 // ───────────────────────── tipos e helpers ─────────────────────────
 
@@ -77,7 +78,7 @@ const Chips = ({ items }: { items: string[] }) =>
   <div className="chips">{items.map((i) => <span className="chip" key={i}>{i}</span>)}</div>;
 
 function Features() {
-  return <div className="bento">
+  return <div className="bento hx-spot-host">
     {FEATURES.map((g, i) => {
       const m = FEATURE_META[i] ?? META_PADRAO;
       return <div key={g.title} data-reveal className={`cell spot ${m.span}`}>
@@ -681,7 +682,7 @@ export function Home() {
   usePageTitle("Venda pelo Discord");
   const faqResumo = useMemo(() => s.faq.slice(0, 6), [s.faq]);
   const recursos = useMemo(() => FEATURES.reduce((a, f) => a + f.items.length, 0), []);
-  const inclinar = useInclinar();
+  useSpotlight(".hx-spot-host");
   // na primeira visita a animação de entrada cobre o topo: quando a cortina sobe, as animações do topo recomeçam
   const [rodada, setRodada] = useState(0);
   useEffect(() => {
@@ -691,33 +692,42 @@ export function Home() {
   }, []);
 
   return <Public>
-    <section className="hm-hero"><div className="wrap">
-      <div className="hm-intro" key={rodada}>
-        <span className="pill" style={vars({ "--d": 0.05 })}><i aria-hidden="true" /> Bot brasileiro de vendas para Discord</span>
-        <h1>{s.title
-          ? <Palavras texto={s.title} />
-          : <><Palavras texto="Venda pelo Discord," /><em><Palavras texto="no automático." inicio={3} /></em></>}</h1>
-        <p className="lead" style={vars({ "--d": 0.6 })}>{s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}</p>
-        <div className="actions" style={vars({ "--d": 0.75 })}>
-          <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
-          <a className="btn lg" href="#recursos">Ver recursos</a>
+    <section className="hx-hero"><div className="hx-bg" aria-hidden="true"><i className="grade" /><i className="o1" /><i className="o2" /></div>
+      <div className="wrap hx-hero-in">
+        <div className="hx-copy" key={rodada}>
+          <span className="pill" style={vars({ "--d": 0.05 })}><i className="hx-live" aria-hidden="true" /> Bot brasileiro de vendas para Discord</span>
+          <h1>{s.title
+            ? <Palavras texto={s.title} />
+            : <><Palavras texto="Venda pelo Discord," /><em><Palavras texto="no automático." inicio={3} /></em></>}</h1>
+          <div style={vars({ "--d": 0.55 })} className="hx-fade"><Rotativo /></div>
+          <p className="lead" style={vars({ "--d": 0.65 })}>{s.text ?? "O ZyraSallers é um bot brasileiro desenvolvido pela Zyra Applications para automatizar vendas, gerenciar clientes e facilitar a administração do seu servidor Discord."}</p>
+          <div className="actions" style={vars({ "--d": 0.8 })}>
+            <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
+            <a className="btn lg" href="#demo">Ver o bot em ação</a>
+          </div>
+          <ul className="hx-stats" style={vars({ "--d": 0.95 })}>
+            <li><b>{s.price}</b><span>preço informado</span></li>
+            <li><b><CountUp to={recursos} /> recursos</b><span>para vender e administrar</span></li>
+            <li><b><CountUp to={GATEWAYS.length} /> modos</b><span>de receber pagamentos</span></li>
+          </ul>
         </div>
-        <ul className="hm-stats" style={vars({ "--d": 0.9 })}>
-          <li><b>{s.price}</b><span>preço informado</span></li>
-          <li><b><CountUp to={recursos} /> recursos</b><span>para vender e administrar</span></li>
-          <li><b><CountUp to={GATEWAYS.length} /> modos</b><span>de receber pagamentos</span></li>
-        </ul>
-      </div>
-      <div className="hm-stage"><div className="hm-stage-in" ref={inclinar}>
-        <SalesFeed />
-        <DemoPainel />
-        <MiniDash />
-      </div></div>
-    </div></section>
+        <CenaTopo><DemoPainel /></CenaTopo>
+      </div></section>
 
     <Marquee />
 
-    <section className="sec" id="recursos"><div className="wrap">
+    <section className="sec tight"><div className="wrap"><Numeros price={s.price} /></div></section>
+
+    <section className="sec rule hx-demo-sec" id="demo"><div className="wrap">
+      <div className="sec-head center" data-reveal>
+        <span className="pill"><i className="hx-live" aria-hidden="true" /> Veja funcionando</span>
+        <h2>Um bot, várias frentes do seu servidor</h2>
+        <p>Escolha uma área e veja como ela aparece para o cliente. Os dados da demonstração são fictícios.</p>
+      </div>
+      <Demonstracao />
+    </div></section>
+
+    <section className="sec rule" id="recursos"><div className="wrap">
       <div className="sec-head center" data-reveal>
         <h2>O bot cuida das suas vendas do começo ao fim</h2>
         <p>Pedidos, pagamentos, clientes e administração em um único bot, direto no seu servidor Discord.</p>
@@ -737,6 +747,17 @@ export function Home() {
       </Bloco>
     </div></section>
 
+    <section className="sec rule" id="comandos"><div className="wrap">
+      <div className="sec-head center" data-reveal>
+        <span className="pill"><i className="hx-live" aria-hidden="true" /> Lista completa</span>
+        <h2>{TOTAL_SLASH} comandos na ponta dos dedos</h2>
+        <p>{TOTAL_SLASH} comandos slash e {TOTAL_MENUS} menus de contexto para administrar, vender, se divertir e cuidar da comunidade. Clique em um comando para copiá-lo.</p>
+      </div>
+      <Comandos />
+    </div></section>
+
+    <Faixa />
+
     <section className="sec rule band"><div className="wrap">
       <div className="sec-head center" data-reveal>
         <h2>Também incluído</h2>
@@ -747,11 +768,7 @@ export function Home() {
 
     <section className="sec rule"><div className="wrap">
       <div className="sec-head center" data-reveal><h2>Do servidor ao painel em três passos</h2></div>
-      <div className="steps">
-        {PASSOS.map((p, i) => <div key={p.t} data-reveal className={`step${i ? ` d${i}` : ""}`}>
-          <h3>{p.t}</h3><p>{p.d}</p>
-        </div>)}
-      </div>
+      <Linha passos={PASSOS} />
     </div></section>
 
     <section className="sec tight"><div className="wrap"><PriceBox price={s.price} invite={s.invite} /></div></section>
@@ -768,14 +785,15 @@ export function Home() {
       <FaqList items={faqResumo} />
     </div></section>
 
-    <section className="cta"><div className="wrap">
+    <section className="cta hx-cta"><AnelCta /><div className="wrap">
       <h2>Pronto para vender mais pelo Discord?</h2>
+      <p className="hx-cta-p">Adquira o bot no servidor oficial e acompanhe tudo pelo painel.</p>
       <ExternalLink className="btn solid lg" href={s.invite}>Adquirir ZyraSallers</ExternalLink>
     </div></section>
   </Public>;
 }
 
-const PRODUTO_NAV: [string, string][] = [["como-funciona", "Como funciona"], ["funcionalidades", "Funcionalidades"], ["pagamentos", "Pagamentos"], ["painel", "Painel"], ["faq", "Dúvidas"]];
+const PRODUTO_NAV: [string, string][] = [["como-funciona", "Como funciona"], ["funcionalidades", "Funcionalidades"], ["comandos", "Comandos"], ["pagamentos", "Pagamentos"], ["painel", "Painel"], ["faq", "Dúvidas"]];
 
 const FLUXO = [
   { n: "01", tag: "Discord", t: "O cliente escolhe", d: "O pedido acontece direto no seu servidor, sem o cliente precisar sair do Discord." },
@@ -851,6 +869,14 @@ export function Product() {
         <div className="pd-cats">{FEATURES.map((g) => <a key={g.title} className="chip" href="#funcionalidades">{g.title} <b>{g.items.length}</b></a>)}</div>
       </div>
       <Features />
+    </div></section>
+
+    <section className="sec rule" id="comandos"><div className="wrap">
+      <div className="sec-head" data-reveal>
+        <h2>{TOTAL_SLASH} comandos slash e {TOTAL_MENUS} menus de contexto</h2>
+        <p>Busque pelo nome ou filtre por categoria. Clique em um comando para copiá-lo.</p>
+      </div>
+      <Comandos compacto />
     </div></section>
 
     <section className="sec rule" id="pagamentos"><div className="wrap">
