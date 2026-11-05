@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { INVITE } from "../content";
 import { Dash } from "../ui/Shell";
 import { api, brl, dt, useApi, ApiError } from "../ui/api";
 import { Async, Avatar, Badge, Empty, Kpi, Pager, TrendChart } from "../ui/kit";
 import { Products } from "./products";
+import { BotIntro } from "../ui/BotIntro";
 
 const botHref = (id: string, tab = "visao-geral") => `/dashboard/bots/${encodeURIComponent(id)}/${tab}`;
 
@@ -13,14 +14,38 @@ function NoBots() {
     <a className="btn solid" href={INVITE} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a></div>;
 }
 
-function BotCard({ b }: { b: any }) {
-  return <a className="card bot clickable" href={botHref(b.bot_id)}>
-    <div className="row">{b.avatar_url ? <img src={b.avatar_url} alt="" className="bav" /> : <span className="bav ph">{(b.name ?? "?")[0]}</span>}
-      <div><h3>{b.name}</h3><small>ID interno: {b.bot_id}</small></div></div>
+const QUICK: [string, string, string][] = [["visao-geral", "📊", "Visão geral"], ["vendas", "💸", "Vendas"], ["produtos", "📦", "Produtos"], ["configuracoes", "⚙️", "Configurações"]];
+
+/** Card do bot: capa que muda de cor conforme o estado, avatar com ponto de status, resumo e atalhos para as áreas. */
+function BotCard({ b, i = 0 }: { b: any; i?: number }) {
+  const ref = useRef<HTMLElement>(null);
+  const [copiado, setCopiado] = useState(false);
+  const lic = b.license_status, integ = b.integration?.status;
+  const tom = lic !== "active" ? "bad" : integ === "ativa" ? "ok" : "wait"; // vermelho: licença com problema; verde: tudo ativo; âmbar: aguardando a integração
+  const estado = tom === "bad" ? "Licença com problema" : tom === "ok" ? "Funcionando" : "Aguardando eventos";
+  const mexer = (e: React.PointerEvent<HTMLElement>) => { const el = ref.current; if (!el) return; const r = el.getBoundingClientRect(); el.style.setProperty("--mx", `${e.clientX - r.left}px`); el.style.setProperty("--my", `${e.clientY - r.top}px`); };
+  const copiar = async () => { try { await navigator.clipboard.writeText(b.bot_id); } catch { /* sem permissão */ } setCopiado(true); setTimeout(() => setCopiado(false), 1500); };
+  const idCurto = String(b.bot_id).length > 18 ? `${String(b.bot_id).slice(0, 8)}…${String(b.bot_id).slice(-4)}` : b.bot_id;
+  return <article ref={ref} className={`card botc ${tom}`} style={{ "--i": i } as React.CSSProperties} onPointerMove={mexer}>
+    <div className="botc-cover" aria-hidden="true"><i /><i /></div>
+    <div className="botc-head">
+      <div className="botc-av">{b.avatar_url ? <img src={b.avatar_url} alt="" referrerPolicy="no-referrer" /> : <span>{(b.name ?? "?")[0]}</span>}<i className="dot" title={estado} /></div>
+      <div className="botc-id">
+        <h3><a className="botc-link" href={botHref(b.bot_id)}>{b.name}</a></h3>
+        <button type="button" className="botc-copy" onClick={copiar} title="Copiar o ID do bot" aria-label={`Copiar o ID ${b.bot_id}`}><code>{idCurto}</code><span>{copiado ? "✓ copiado" : "copiar"}</span></button>
+      </div>
+    </div>
     {b.owners && <p className="owners">Dono: {b.owners.length ? b.owners.map((o: any) => o.name).join(", ") : "sem dono vinculado"}</p>}
-    <dl><dt>Adquirido em</dt><dd>{dt(b.acquired_at)}</dd><dt>Licença</dt><dd><Badge s={b.license_status} /></dd>
-      <dt>Integração</dt><dd><Badge s={b.integration.status} /></dd></dl>
-    <span className="btn solid">Gerenciar</span></a>;
+    <div className="botc-chips"><Badge s={lic} /><Badge s={integ} /></div>
+    <ul className="botc-meta">
+      <li><span>Adquirido</span><b title={dt(b.acquired_at)}>{ago(b.acquired_at) ?? "—"}</b></li>
+      <li><span>Última atividade</span><b>{b.integration?.last_request_at ? ago(b.integration.last_request_at) : "sem eventos"}</b></li>
+    </ul>
+    <div className="botc-foot">
+      <a className="btn solid" href={botHref(b.bot_id)}>Gerenciar</a>
+      <nav className="botc-q" aria-label={`Atalhos de ${b.name}`}>{QUICK.map(([t, e, l]) => <a key={t} href={botHref(b.bot_id, t)} title={l} aria-label={l}><span aria-hidden="true">{e}</span></a>)}</nav>
+    </div>
+  </article>;
 }
 
 export function DashboardHome() {
@@ -31,7 +56,7 @@ export function DashboardHome() {
       <Kpi label="Integrações ativas" value={d.bots.filter((b: any) => b.integration.status === "ativa").length} hint={`de ${d.bots.length}`} /></div>
     {d.bots.length === 1 && <a className="btn solid" href={botHref(d.bots[0].bot_id)}>Abrir painel de {d.bots[0].name}</a>}
     {d.alerts.map((a: any, i: number) => <div key={i} className={`state ${a.level === "erro" ? "err" : ""}`}>{a.text.replace(" suspended", " suspensa").replace(" expired", " expirada")}</div>)}
-    <h2>Seus bots</h2><div className="grid3">{d.bots.map((b: any) => <BotCard key={b.bot_id} b={b} />)}</div>
+    <h2>Seus bots</h2><div className="grid3">{d.bots.map((b: any, i: number) => <BotCard key={b.bot_id} b={b} i={i} />)}</div>
   </>}</Async></Dash>;
 }
 
@@ -51,7 +76,7 @@ export function DashboardBots() {
       <button className={all ? "on" : ""} aria-pressed={all} onClick={() => setAll(true)}>Todos os bots</button></div>}</div>
     {all && isAdm && <input className="input" style={{ margin: "18px 0" }} aria-label="Buscar bots" placeholder="Buscar por nome do bot, ID ou dono" value={term} onChange={(e) => setTerm(e.target.value)} />}
     <Async q={q}>{(d) => { const list = d.bots.filter(match);
-      return d.bots.length ? (list.length ? <div className="grid3" style={{ marginTop: all ? 0 : 20 }}>{list.map((b: any) => <BotCard key={b.bot_id} b={b} />)}</div> : <Empty>Nenhum bot encontrado para essa busca.</Empty>)
+      return d.bots.length ? (list.length ? <div className="grid3" style={{ marginTop: all ? 0 : 20 }}>{list.map((b: any, i: number) => <BotCard key={b.bot_id} b={b} i={i} />)}</div> : <Empty>Nenhum bot encontrado para essa busca.</Empty>)
         : <NoBots />; }}</Async></Dash>;
 }
 
@@ -222,19 +247,18 @@ function Clients({ botId }: { botId: string }) {
       <Pager page={d.page} pageSize={d.pageSize} total={d.total} onChange={setPage} /></>}</Async></>;
 }
 
-const SHARD_ERR: Record<string, string> = {
-  shard_not_configured: "A integração com a Shard Cloud ainda não foi configurada no servidor (SHARD_API_TOKEN).",
-  shard_auth: "A Shard Cloud recusou o token do servidor. Gere outro em Settings > API Token e atualize a variável.",
-  shard_not_found: "Esse app não foi encontrado na Shard Cloud.",
-  shard_rejected: "A Shard Cloud recusou a operação.",
-  shard_unavailable: "A Shard Cloud não respondeu. Tente de novo em instantes.",
+const ERRO_CONTROLE: Record<string, string> = {
+  shard_not_configured: "O controle do bot ainda não está disponível. Fale com o suporte.",
+  shard_auth: "O controle do bot está indisponível no momento. Fale com o suporte.",
+  shard_not_found: "Não encontramos este bot para controlar.",
+  shard_rejected: "A operação foi recusada. Tente de novo em instantes.",
+  shard_unavailable: "O controle do bot não respondeu. Tente de novo em instantes.",
   too_fast: "Aguarde alguns segundos antes de enviar outro comando.",
   license_inactive: "A licença deste bot não está ativa, então ele não pode ser iniciado.",
-  not_shard_app: "Este bot não está vinculado a um app da Shard Cloud.",
+  not_shard_app: "O controle de ligar e desligar ainda não está disponível para este bot.",
   session_expired: "Sua sessão expirou. Entre novamente.",
 };
-const errText = (e: unknown) => { const x = e as any;
-  return (SHARD_ERR[x?.code] ?? "Não foi possível concluir a ação.") + (x?.code === "shard_rejected" && x?.detail ? ` (${x.detail})` : ""); };
+const errText = (e: unknown) => ERRO_CONTROLE[(e as any)?.code] ?? "Não foi possível concluir a ação.";
 const STATUS: Record<string, [string, string]> = { running: ["Online", "approved"], stopped: ["Desligado", "canceled"], pending: ["Iniciando", "pending"], not_found: ["Não encontrado", "expired"] };
 const uptime = (sec: number) => { const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}min` : `${m}min`; };
@@ -254,22 +278,25 @@ function ShardPanel({ botId }: { botId: string }) {
       setMsg("");
     } catch (e) { setMsg(errText(e)); } finally { setBusy(null); }
   };
-  return <div className="card form">
-    <div className="row between"><h3 style={{ margin: 0 }}>Bot na Shard Cloud</h3>
-      {q.data?.linked && (() => { const [l, c] = STATUS[q.data.status] ?? [q.data.status, ""]; return <span className={`badge ${c}`}>{l}</span>; })()}</div>
-    {q.loading && !q.data && <div className="state"><span className="spin" /> Consultando a Shard Cloud…</div>}
+  const st = q.data?.status as string | undefined, on = st === "running", wait = st === "pending";
+  const [rotulo, classe] = STATUS[st ?? ""] ?? [st ?? "—", ""];
+  return <div className="card form ctl">
+    <div className="row between"><h3 style={{ margin: 0 }}>🎛️ Controle do bot</h3>
+      {q.data?.linked && <span className={`badge ${classe}`}>{rotulo}</span>}</div>
+    {q.loading && !q.data && <div className="state"><span className="spin" /> Consultando o bot…</div>}
     {q.error && <div className="state err">{errText(q.error)} <button className="btn sm" onClick={q.reload}>Tentar de novo</button></div>}
-    {q.data && !q.data.linked && <div className="state">Este bot não está vinculado a um app da Shard Cloud, por isso não há status nem controles.</div>}
+    {q.data && !q.data.linked && <div className="state">O controle de ligar e desligar ainda não está disponível para este bot.</div>}
     {q.data?.linked && <>
-      <dl className="kv"><dt>Nome</dt><dd>{q.data.name ?? "—"}</dd><dt>ID do app</dt><dd><code>{q.data.id}</code></dd>
-        <dt>Linguagem</dt><dd>{[q.data.language, q.data.version].filter(Boolean).join(" ") || "—"}</dd>
-        <dt>Recursos</dt><dd>{q.data.ram ? `${q.data.ram} MB` : "—"} · {q.data.vcpu ?? "—"} vCPU</dd>
-        <dt>Online há</dt><dd>{q.data.status === "running" ? uptime(q.data.uptime_seconds) : "—"}</dd></dl>
-      {q.data.blocked_until && <div className="state err">App bloqueado{q.data.blocked_reason ? `: ${q.data.blocked_reason}` : ""}.</div>}
+      <div className={`ctl-tile ${on ? "on" : wait ? "wait" : "off"}`}>
+        <span className="ctl-dot" aria-hidden="true" />
+        <div><b>{on ? "Bot online" : wait ? "Iniciando…" : "Bot desligado"}</b>
+          <small>{on ? `Ligado há ${uptime(q.data.uptime_seconds)}` : wait ? "Aguarde alguns segundos" : "Clique em Iniciar para ligar"}</small></div>
+      </div>
+      {q.data.blocked_until && <div className="state err">Este bot está bloqueado{q.data.blocked_reason ? `: ${q.data.blocked_reason}` : ""}.</div>}
       <div className="row wrapx">
-        <button className="btn solid" disabled={!!busy || q.data.status === "running" || q.data.status === "pending"} onClick={() => act("run")}>{busy === "run" ? "Iniciando…" : "Iniciar"}</button>
-        <button className="btn" disabled={!!busy || q.data.status !== "running"} onClick={() => act("restart", "Reiniciar o bot agora?")}>{busy === "restart" ? "Reiniciando…" : "Reiniciar"}</button>
-        <button className="btn" disabled={!!busy || q.data.status === "stopped"} onClick={() => act("stop", "Desligar o bot? Ele ficará offline até você iniciar de novo.")}>{busy === "stop" ? "Desligando…" : "Desligar"}</button>
+        <button className="btn solid" disabled={!!busy || on || wait} onClick={() => act("run")}>{busy === "run" ? "Iniciando…" : "▶ Iniciar"}</button>
+        <button className="btn" disabled={!!busy || !on} onClick={() => act("restart", "Reiniciar o bot agora?")}>{busy === "restart" ? "Reiniciando…" : "↻ Reiniciar"}</button>
+        <button className="btn danger" disabled={!!busy || st === "stopped"} onClick={() => act("stop", "Desligar o bot? Ele ficará offline até você iniciar de novo.")}>{busy === "stop" ? "Desligando…" : "■ Desligar"}</button>
       </div></>}
     {msg && <p className="muted" style={{ margin: 0 }}>{msg}</p>}
   </div>;
@@ -284,10 +311,10 @@ function Settings({ botId }: { botId: string }) {
       <Async q={q}>{(b) => { const v = f ?? { name: b.name, avatar_url: b.avatar_url ?? "" };
         return <div className="card form"><h3 style={{ margin: 0 }}>Identidade do bot</h3>
           <label>Nome<input className="input" value={v.name} maxLength={60} onChange={(e) => setF({ ...v, name: e.target.value })} />
-            <small>Também é alterado na Shard Cloud.</small></label>
+            <small>O nome também é atualizado no próprio bot.</small></label>
           <label>Ícone (URL https)<div className="row">{v.avatar_url ? <img src={v.avatar_url} alt="" className="bav" /> : <span className="bav ph">{(v.name ?? "?")[0]}</span>}
             <input className="input" placeholder="https://…" value={v.avatar_url} onChange={(e) => setF({ ...v, avatar_url: e.target.value })} /></div>
-            <small>A Shard Cloud não tem ícone de app, então ele existe só aqui no site.</small></label>
+            <small>O ícone aparece só aqui no painel.</small></label>
           <button className="btn solid" disabled={saving} onClick={async () => { setSaving(true); setMsg(null);
             try { await api(`/api/bots/${encodeURIComponent(botId)}`, { method: "PATCH", json: { name: v.name, avatar_url: v.avatar_url || null } });
               setMsg({ ok: true, t: "Salvo." }); setF(null); q.reload(); }
@@ -305,7 +332,8 @@ function BetaTab({ title }: { title: string }) {
 
 export function BotPage({ botId, tab }: { botId: string; tab: "visao-geral" | "clientes" | "vendas" | "produtos" | "ticket" | "configuracoes" }) {
   const info = useApi<any>(`/api/bots/${encodeURIComponent(botId)}`);
-  return <Dash bot={{ id: botId, name: info.data?.name }}>
+  return <Dash bot={{ id: botId, name: info.data?.name, avatar: info.data?.avatar_url }}>
+    <BotIntro botId={botId} info={info} />
     {info.data?.as_admin && <div className="state adm" role="status"><b>Você está vendo este painel como administrador.</b>{" "}
       Dono: {info.data.owners?.length ? info.data.owners.map((o: any) => o.name).join(", ") : "sem dono vinculado"}. Alterações feitas aqui ficam registradas na auditoria.</div>}
     {info.error?.status === 404 ? <div className="empty"><h2>Bot não encontrado</h2><p>Ele não existe ou não está vinculado à sua conta.</p><a className="btn" href="/dashboard/bots">Voltar</a></div> :
