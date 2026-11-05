@@ -84,7 +84,7 @@ export function PageLoader() {
   </div>;
 }
 
-export function Dash({ children, bot }: { children: ReactNode; bot?: { id: string; name?: string } }) {
+export function Dash({ children, bot }: { children: ReactNode; bot?: { id: string; name?: string; avatar?: string | null } }) {
   const me = useApi<any>("/api/me");
   useFavicon();
   const [leaving, setLeaving] = useState(false);
@@ -106,8 +106,9 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
   }, []);
   const [p, setP] = useState(""); // definido após montar: evita divergência entre o HTML do servidor e o navegador
   useEffect(() => { setP(window.location.pathname); }, []);
-  const item = (href: string, label: string, ext = false, beta = false) =>
-    <a key={href} href={href} className={!ext && p === href ? "on" : ""} aria-current={!ext && p === href ? "page" : undefined} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})}>{label}{beta && <em className="pillbeta">Beta</em>}</a>;
+  const item = (href: string, emoji: string, label: string, beta = false) =>
+    <a key={href} href={href} className={p === href ? "on" : ""} aria-current={p === href ? "page" : undefined}>
+      <span className="ni" aria-hidden="true">{emoji}</span><span className="nl">{label}</span>{beta && <em className="pillbeta">Beta</em>}</a>;
   const base = bot ? `/dashboard/bots/${encodeURIComponent(bot.id)}` : "";
   const outAll = async () => { if (!confirm("Sair de todos os aparelhos? Você precisará entrar de novo em cada um.")) return;
     await api("/api/auth/logout-all", { method: "POST" }).catch(() => {}); window.location.href = "/"; };
@@ -116,14 +117,19 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
     {(leaving || (me.loading && !me.data)) && <PageLoader />}
     <aside><Logo />
       <nav>
-        {item("/dashboard", "Início")}{item("/dashboard/bots", "Meus bots")}
+        {item("/dashboard", "🏠", "Início")}{item("/dashboard/bots", "🤖", "Meus bots")}
         {bot && <><hr /><small>{bot.name ?? "Bot"}</small>
-          {item(`${base}/visao-geral`, "Visão geral")}{item(`${base}/clientes`, "Meus Clientes")}{item(`${base}/vendas`, "Vendas")}{item(`${base}/produtos`, "Produtos")}{item(`${base}/ticket`, "Ticket", false, true)}
-          {item(INVITE, "Suporte", true)}{item(`${base}/configuracoes`, "Configurações")}</>}
-        {me.data?.is_admin && <><hr />{item("/admin", "Administração")}</>}
-      </nav></aside>
+          {item(`${base}/visao-geral`, "📊", "Visão geral")}{item(`${base}/clientes`, "👥", "Meus Clientes")}{item(`${base}/vendas`, "💸", "Vendas")}
+          {item(`${base}/produtos`, "📦", "Produtos")}{item(`${base}/ticket`, "🎫", "Ticket", true)}{item(`${base}/configuracoes`, "⚙️", "Configurações")}</>}
+        {me.data?.is_admin && <><hr />{item("/admin", "🛡️", "Administração")}</>}
+        <a className="only-m" href={INVITE} target="_blank" rel="noreferrer"><span className="ni" aria-hidden="true">💬</span><span className="nl">Suporte</span></a>
+      </nav>
+      <div className="side-bottom">
+        <a className="side-discord" href={INVITE} target="_blank" rel="noreferrer">
+          <span className="ni" aria-hidden="true">💬</span><span className="sd-t"><b>Suporte no Discord</b><small>Fale com a equipe</small></span><i aria-hidden="true">↗</i></a>
+      </div></aside>
     <section>
-      <div className="dtop"><span className="crumb">{bot?.name ?? ""}</span>
+      <div className="dtop"><span className="crumb">{bot && (bot.avatar ? <img src={bot.avatar} alt="" referrerPolicy="no-referrer" /> : <i className="crumb-ph" aria-hidden="true">{(bot.name ?? "B")[0]}</i>)}{bot?.name ?? ""}</span>
         {me.data && <div className="user"><img src={avatarUrl(me.data.discord_id, me.data.avatar)} alt="" />
           <span>{me.data.global_name ?? me.data.username}</span><button className="btn sm" onClick={out}>Sair</button></div>}</div>
       <div className="dbody"><Async q={me}>{() => children}</Async>
