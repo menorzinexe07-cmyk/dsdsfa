@@ -5,6 +5,7 @@ import { api, brl, dt, useApi, ApiError } from "../ui/api";
 import { Async, Avatar, Badge, Empty, Kpi, Pager, TrendChart } from "../ui/kit";
 import { Products } from "./products";
 import { BotIntro } from "../ui/BotIntro";
+import { Emo, type EmoName } from "../ui/Emoji";
 
 const botHref = (id: string, tab = "visao-geral") => `/dashboard/bots/${encodeURIComponent(id)}/${tab}`;
 
@@ -14,7 +15,7 @@ function NoBots() {
     <a className="btn solid" href={INVITE} target="_blank" rel="noreferrer">Adquirir ZyraSallers</a></div>;
 }
 
-const QUICK: [string, string, string][] = [["visao-geral", "📊", "Visão geral"], ["vendas", "💸", "Vendas"], ["produtos", "📦", "Produtos"], ["configuracoes", "⚙️", "Configurações"]];
+const QUICK: [string, EmoName, string][] = [["visao-geral", "chart", "Visão geral"], ["vendas", "money", "Vendas"], ["produtos", "box", "Produtos"], ["configuracoes", "gear", "Configurações"]];
 
 /** Card do bot: capa que muda de cor conforme o estado, avatar com ponto de status, resumo e atalhos para as áreas. */
 function BotCard({ b, i = 0 }: { b: any; i?: number }) {
@@ -43,7 +44,7 @@ function BotCard({ b, i = 0 }: { b: any; i?: number }) {
     </ul>
     <div className="botc-foot">
       <a className="btn solid" href={botHref(b.bot_id)}>Gerenciar</a>
-      <nav className="botc-q" aria-label={`Atalhos de ${b.name}`}>{QUICK.map(([t, e, l]) => <a key={t} href={botHref(b.bot_id, t)} title={l} aria-label={l}><span aria-hidden="true">{e}</span></a>)}</nav>
+      <nav className="botc-q" aria-label={`Atalhos de ${b.name}`}>{QUICK.map(([t, e, l]) => <a key={t} href={botHref(b.bot_id, t)} title={l} aria-label={l}><Emo n={e} size={22} /></a>)}</nav>
     </div>
   </article>;
 }
@@ -281,7 +282,7 @@ function ShardPanel({ botId }: { botId: string }) {
   const st = q.data?.status as string | undefined, on = st === "running", wait = st === "pending";
   const [rotulo, classe] = STATUS[st ?? ""] ?? [st ?? "—", ""];
   return <div className="card form ctl">
-    <div className="row between"><h3 style={{ margin: 0 }}>🎛️ Controle do bot</h3>
+    <div className="row between"><h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 10 }}><Emo n="sliders" size={26} /> Controle do bot</h3>
       {q.data?.linked && <span className={`badge ${classe}`}>{rotulo}</span>}</div>
     {q.loading && !q.data && <div className="state"><span className="spin" /> Consultando o bot…</div>}
     {q.error && <div className="state err">{errText(q.error)} <button className="btn sm" onClick={q.reload}>Tentar de novo</button></div>}
