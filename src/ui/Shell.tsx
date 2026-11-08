@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, avatarUrl, useApi } from "./api";
+import { Emo, type EmoName } from "./Emoji";
 import { INVITE } from "../content";
 import { Async } from "./kit";
 import { Intro } from "./Intro";
@@ -106,9 +107,10 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
   }, []);
   const [p, setP] = useState(""); // definido após montar: evita divergência entre o HTML do servidor e o navegador
   useEffect(() => { setP(window.location.pathname); }, []);
-  const item = (href: string, emoji: string, label: string, beta = false) =>
-    <a key={href} href={href} className={p === href ? "on" : ""} aria-current={p === href ? "page" : undefined}>
-      <span className="ni" aria-hidden="true">{emoji}</span><span className="nl">{label}</span>{beta && <em className="pillbeta">Beta</em>}</a>;
+  const on = (href: string) => p === href || (href.endsWith("/produtos") && p.includes("/campos/")); // dentro dos campos de um produto, "Produtos" continua marcado
+  const item = (href: string, emoji: EmoName, label: string, beta = false) =>
+    <a key={href} href={href} className={on(href) ? "on" : ""} aria-current={on(href) ? "page" : undefined}>
+      <span className="ni" aria-hidden="true"><Emo n={emoji} size={22} /></span><span className="nl">{label}</span>{beta && <em className="pillbeta">Beta</em>}</a>;
   const base = bot ? `/dashboard/bots/${encodeURIComponent(bot.id)}` : "";
   const outAll = async () => { if (!confirm("Sair de todos os aparelhos? Você precisará entrar de novo em cada um.")) return;
     await api("/api/auth/logout-all", { method: "POST" }).catch(() => {}); window.location.href = "/"; };
@@ -117,16 +119,16 @@ export function Dash({ children, bot }: { children: ReactNode; bot?: { id: strin
     {(leaving || (me.loading && !me.data)) && <PageLoader />}
     <aside><Logo />
       <nav>
-        {item("/dashboard", "🏠", "Início")}{item("/dashboard/bots", "🤖", "Meus bots")}
+        {item("/dashboard", "home", "Início")}{item("/dashboard/bots", "robot", "Meus bots")}
         {bot && <><hr /><small>{bot.name ?? "Bot"}</small>
-          {item(`${base}/visao-geral`, "📊", "Visão geral")}{item(`${base}/clientes`, "👥", "Meus Clientes")}{item(`${base}/vendas`, "💸", "Vendas")}
-          {item(`${base}/produtos`, "📦", "Produtos")}{item(`${base}/ticket`, "🎫", "Ticket", true)}{item(`${base}/configuracoes`, "⚙️", "Configurações")}</>}
-        {me.data?.is_admin && <><hr />{item("/admin", "🛡️", "Administração")}</>}
-        <a className="only-m" href={INVITE} target="_blank" rel="noreferrer"><span className="ni" aria-hidden="true">💬</span><span className="nl">Suporte</span></a>
+          {item(`${base}/visao-geral`, "chart", "Visão geral")}{item(`${base}/clientes`, "people", "Meus Clientes")}{item(`${base}/vendas`, "money", "Vendas")}
+          {item(`${base}/produtos`, "box", "Produtos")}{item(`${base}/ticket`, "ticket", "Ticket", true)}{item(`${base}/configuracoes`, "gear", "Configurações")}</>}
+        {me.data?.is_admin && <><hr />{item("/admin", "shield", "Administração")}</>}
+        <a className="only-m" href={INVITE} target="_blank" rel="noreferrer"><span className="ni" aria-hidden="true"><Emo n="chat" size={22} /></span><span className="nl">Suporte</span></a>
       </nav>
       <div className="side-bottom">
         <a className="side-discord" href={INVITE} target="_blank" rel="noreferrer">
-          <span className="ni" aria-hidden="true">💬</span><span className="sd-t"><b>Suporte no Discord</b><small>Fale com a equipe</small></span><i aria-hidden="true">↗</i></a>
+          <span className="ni" aria-hidden="true"><Emo n="chat" size={22} /></span><span className="sd-t"><b>Suporte no Discord</b><small>Fale com a equipe</small></span><i aria-hidden="true">↗</i></a>
       </div></aside>
     <section>
       <div className="dtop"><span className="crumb">{bot && (bot.avatar ? <img src={bot.avatar} alt="" referrerPolicy="no-referrer" /> : <i className="crumb-ph" aria-hidden="true">{(bot.name ?? "B")[0]}</i>)}{bot?.name ?? ""}</span>
