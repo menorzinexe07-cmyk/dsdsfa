@@ -190,6 +190,7 @@ export function parseSingleProduct(key: string, body: unknown): { ok: true; prod
 }
 
 export const ackSchema = z.object({
+  ops: z.array(z.object({ id: z.number().int().positive(), ok: z.boolean().optional(), error: z.string().max(200).optional() })).max(200).optional(),
   site_ids: z.array(z.string().uuid()).max(MAX_PRODUCTS_PER_BOT).optional(),
   acks: z.array(z.object({ site_id: z.string().uuid(), external_id: z.union([z.string(), z.number()]).transform(String).pipe(z.string().min(1).max(100)).optional(),
     ok: z.boolean().optional(), error: z.string().max(200).optional() })).max(MAX_PRODUCTS_PER_BOT).optional(),
@@ -228,3 +229,75 @@ export function toBotFormat(rows: any[]): Record<string, BotEntry> {
 /** Assinatura do envio ao bot: HMAC-SHA256 de "<timestamp>.<corpo>" com o segredo compartilhado. */
 export const signPayload = (secret: string, ts: string, body: string) =>
   "sha256=" + createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex");
+
+
+// ───────────────────────── campos e estoque ─────────────────────────
+
+export const MAX_FIELDS_PER_PRODUCT = 25;      // é o limite de opções de um menu de seleção do Discord
+export const MAX_STOCK_LINES_PER_OP = 20_000;
+export const MAX_STOCK_LINE_CHARS = 2000;
+/** Marca de "estoque infinito": o bot trata a linha que termina assim como inesgotável. Texto exatamente como o bot espera. */
+export const SUFIXO_INFINITO = "         ------- - - - -  INFINITOSOS";
+
+const semControle = (v: string) => !/[\u0000-\u001f\u007f]/.test(v);
+const nomeCampo = z.string().trim().min(1).max(80).refine(semControle);
+const preco = z.union([z.number(), z.string()]).transform((v) => (typeof v === "number" ? String(v) : v.trim().replace(",", ".")))
+  .pipe(z.string().regex(/^\d{1,7}(\.\d{1,2})?$/)).transform(Number).pipe(z.number().gt(0).max(1_000_000));
+const textoLinha = z.string().trim().min(1).max(1900).refine(semControle);
+
+export const campoSchema = z.object({
+  nome: nomeCampo,
+  desc: z.string().trim().max(500).refine(noControl).optional().default(""),
+  valor: preco,
+  emoji: z.string().trim().max(100).refine(semControle).optional().default(""),
+});
+
+export const estoqueSchema = z.discriminatedUnion("mode", [
+  z.object({ nome: nomeCampo, mode: z.literal("infinito"), valor: textoLinha }),
+  z.object({ nome: nomeCampo, mode: z.literal("linhas"), texto: z.string().max(3_000_000) }),
+  z.object({ nome: nomeCampo, mode: z.literal("txt"), texto: z.string().max(3_000_000) }),
+  z.object({ nome: nomeCampo, mode: z.literal("fantasma"), quantidade: z.number().int().min(1).max(10_000), valor: textoLinha }),
+]);
+
+export type NovoEstoque = { ok: true; lines: string[]; infinito: boolean } | { ok: false; error: string };
+
+/** Transforma o que o usuário digitou nas linhas de estoque que o bot vai guardar. */
+export function gerarLinhas(e: z.infer<typeof estoqueSchema>): NovoEstoque {
+  if (e.mode === "infinito") return { ok: true, lines: [`${e.valor}${SUFIXO_INFINITO}`], infinito: true };
+  if (e.mode === "fantasma") return { ok: true, lines: Array.from({ length: e.quantidade }, (_, i) => `${e.valor} ${i + 1}/${e.quantidade}`), infinito: false };
+  if (e.texto.includes("\u0000")) return { ok: false, error: "not_text" }; // arquivo binário
+  const lines = e.texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return { ok: false, error: "empty_stock" };
+  if (lines.length > MAX_STOCK_LINES_PER_OP) return { ok: false, error: "too_many_lines" };
+  if (lines.some((l) => l.length > MAX_STOCK_LINE_CHARS)) return { ok: false, error: "line_too_long" };
+  return { ok: true, lines, infinito: lines.some((l) => l.endsWith("INFINITOSOS")) };
+}
+
+export type CampoView = { nome: string; desc: string; valor: number; emoji: string; criado: number; estoque: number; infinito: boolean; pendente: boolean };
+export type OpLeve = { type: string; resumo: any };
+
+export const mesmoNome = (a: string, b: string) => a.localeCompare(b, "pt-BR", { sensitivity: "accent" }) === 0 || a.toLowerCase() === b.toLowerCase();
+/** Campo como o bot o envia (resumo: estoque vira só a contagem) → visão do painel. */
+export function campoDoSnapshot(c: any): CampoView {
+  const lista = Array.isArray(c?.estoque) ? c.estoque : [];
+  return { nome: String(c?.Nome ?? ""), desc: String(c?.desc ?? ""), valor: Number(c?.valor ?? 0), emoji: String(c?.emoji ?? ""), criado: Number(c?.criado ?? 0),
+    estoque: Number(c?.estoque_total ?? lista.length), infinito: c?.estoque_infinito === true || lista.some((l: any) => typeof l === "string" && l.endsWith("INFINITOSOS")), pendente: false };
+}
+/** Aplica operações (na ordem) sobre a visão. `marcar` = destaca o que ainda não foi confirmado pelo bot. */
+export function aplicarOps(campos: CampoView[], ops: OpLeve[], marcar: boolean): CampoView[] {
+  let out = campos.map((c) => ({ ...c }));
+  for (const op of ops) {
+    const r = op.resumo ?? {};
+    if (op.type === "field.create" && r.field) {
+      if (!out.some((c) => mesmoNome(c.nome, r.field.nome))) out.push({ nome: r.field.nome, desc: r.field.desc ?? "", valor: Number(r.field.valor), emoji: r.field.emoji ?? "", criado: Number(r.field.criado), estoque: 0, infinito: false, pendente: marcar });
+    } else if (op.type === "field.delete") out = out.filter((c) => !mesmoNome(c.nome, r.nome));
+    else if (op.type === "stock.add") {
+      const c = out.find((x) => mesmoNome(x.nome, r.nome));
+      if (c) { c.estoque += Number(r.count ?? 0); c.infinito = c.infinito || r.infinito === true; c.pendente = c.pendente || marcar; }
+    }
+  }
+  return out;
+}
+export const construirCampos = (snapshot: any[] | undefined, pendentes: OpLeve[]) => aplicarOps((snapshot ?? []).map(campoDoSnapshot), pendentes, true);
+/** Volta ao formato que o bot manda (estoque só como contagem). */
+export const paraSnapshot = (campos: CampoView[]) => campos.map((c) => ({ estoque: [] as string[], valor: c.valor, Nome: c.nome, desc: c.desc, emoji: c.emoji, criado: c.criado, estoque_total: c.estoque, estoque_infinito: c.infinito }));
