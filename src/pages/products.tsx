@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError, api, dt, useApi } from "../ui/api";
 import { Async, Badge } from "../ui/kit";
+import { Emo } from "../ui/Emoji";
 
 const PICK_MAX = 12 * 1024 * 1024; // tamanho máximo da imagem escolhida (ela é reduzida antes de enviar)
 const SEND_MAX = 4 * 1024 * 1024;  // o que realmente vai para o site (a Vercel recusa corpo acima de 4,5 MB)
@@ -55,10 +56,10 @@ const tamanho = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 
 type Draft = { name: string; desc: string; dtype: "" | "automatic" | "manual"; file: File | null; removeBanner: boolean };
 type Submit = { fd: FormData; draft: Draft };
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { const d = ref.current; if (d && !d.open) d.showModal(); return () => { if (d?.open) d.close(); }; }, []);
-  return <dialog ref={ref} className="pmodal" aria-labelledby="pm-title"
+  return <dialog ref={ref} className={`pmodal${wide ? " wide" : ""}`} aria-labelledby="pm-title"
     onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
     <div className="pm-in">
       <div className="pm-head"><h2 id="pm-title">{title}</h2><button type="button" className="btn sm" onClick={onClose}>Fechar</button></div>
@@ -151,7 +152,7 @@ function ConfirmDelete({ p, onClose, onConfirm }: { p: any; onClose: () => void;
     </div></Modal>;
 }
 
-function ProductCard({ p, busy, onResend, onEdit, onDelete }: { p: any; busy: boolean; onResend: () => void; onEdit: () => void; onDelete: () => void }) {
+function ProductCard({ p, botId, busy, onResend, onEdit, onDelete }: { p: any; botId: string; busy: boolean; onResend: () => void; onEdit: () => void; onDelete: () => void }) {
   const [broken, setBroken] = useState(false);
   const saving = !!p._saving;
   const key = p.sync_status === "synced" ? "synced" : p.sync_status === "failed" ? "failed" : "awaiting";
@@ -165,6 +166,8 @@ function ProductCard({ p, busy, onResend, onEdit, onDelete }: { p: any; busy: bo
         {p.source === "bot" && <span className="badge neutral">Veio do bot</span>}</div>
       {!saving && key !== "synced" && <div className="psync"><small>{syncText(p.sync_error)}</small>
         {p.sync_error !== "bot_webhook_not_configured" && <button type="button" className="btn sm" disabled={busy} onClick={onResend}>{busy ? "Enviando…" : "Reenviar ao bot"}</button>}</div>}
+      {saving ? <span className="btn sm pcampos off"><Emo n="layers" size={18} /> Gerenciar Campos</span>
+        : <a className="btn sm pcampos" href={`/dashboard/bots/${encodeURIComponent(botId)}/campos/${p.id}`}><Emo n="layers" size={18} /> Gerenciar Campos</a>}
       <div className="pact"><button type="button" className="btn sm" onClick={onEdit} disabled={saving}>Editar</button>
         <button type="button" className="btn sm danger" onClick={onDelete} disabled={saving}>Excluir</button></div>
       <small className="pdate">{p.source === "bot" ? "Sincronizado" : "Criado"} em {dt(p.source === "bot" ? p.synced_at ?? p.created_at : p.created_at)}</small>
@@ -246,7 +249,7 @@ export function Products({ botId }: { botId: string }) {
     {note && <div className={`state ${note.ok ? "ok" : "err"}`} role="status">{note.t}</div>}
     <Async q={q}>{(d) => { const lista = items ?? d.items;
       return lista.length
-        ? <div className="pgrid">{lista.map((p: any) => <ProductCard key={p.id} p={p} busy={sending === p.id} onResend={() => void resend(p)}
+        ? <div className="pgrid">{lista.map((p: any) => <ProductCard key={p.id} p={p} botId={botId} busy={sending === p.id} onResend={() => void resend(p)}
             onEdit={() => { setNote(null); setDlg({ kind: "edit", p }); }} onDelete={() => { setNote(null); setDlg({ kind: "delete", p }); }} />)}</div>
         : <div className="empty card"><h2>Nenhum produto ainda</h2>
             <p>Crie o primeiro produto do bot. O bot recebe assim que ele for salvo, e os produtos que o bot já tem aparecem aqui quando ele sincronizar a lista.</p>
