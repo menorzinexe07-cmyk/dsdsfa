@@ -3,8 +3,9 @@ import { db } from "./db";
 import { authenticate, json } from "./api";
 import { audit, owner, writeGuard, type Route } from "./dashboardApi";
 import {
-  MAX_PRODUCTS_PER_BOT, MAX_ROWS_PER_BOT, ackSchema, hashBotData, parseListProducts, parseProductEditForm, parseProductForm,
-  parseSingleProduct, signPayload, toBotFormat, type Banner, type BotProduct,
+  MAX_FIELDS_PER_PRODUCT, MAX_PRODUCTS_PER_BOT, MAX_ROWS_PER_BOT, ackSchema, aplicarOps, campoDoSnapshot, campoSchema, construirCampos, estoqueSchema, gerarLinhas,
+  hashBotData, mesmoNome, paraSnapshot, parseListProducts, parseProductEditForm, parseProductForm,
+  parseSingleProduct, signPayload, toBotFormat, type Banner, type BotProduct, type CampoView,
 } from "./productCore";
 
 const COLS = "id,bot_id,external_id,name,description,delivery_type,banner_url,source,sync_status,sync_error,synced_at,created_at,updated_at";
@@ -87,6 +88,28 @@ async function syncProduct(p: any, event: Event) {
 }
 
 const failBanner = (e: unknown) => { console.error("[products] banner upload:", (e as Error).message); return json({ error: "upload_error" }, 502); };
+
+// ───────── campos e estoque ─────────
+
+type OpRow = { id: number; type: string; resumo: any; created_at: string; applied_at: string | null; error: string | null };
+const opVista = (o: OpRow) => { const r = o.resumo ?? {}; return { id: o.id, tipo: o.type, campo: r.nome ?? r.field?.nome ?? "", qtd: r.count ?? null, infinito: r.infinito === true, modo: r.mode ?? null,
+  estado: o.error ? "falhou" : o.applied_at ? "aplicado" : "pendente", erro: o.error, em: o.created_at }; };
+
+/** Campos do produto = o último resumo enviado pelo bot + as operações que o bot ainda não confirmou (assim o painel mostra tudo na hora). */
+async function carregarCampos(botId: string, pid: string) {
+  const [{ data: p }, { data: recentes }, { data: pend }] = await Promise.all([
+    db.from("products").select("id,name,bot_data").eq("id", pid).eq("bot_id", botId).is("deleted_at", null).maybeSingle(),
+    db.from("product_ops").select("id,type,resumo,created_at,applied_at,error").eq("product_id", pid).order("id", { ascending: false }).limit(40),
+    db.from("product_ops").select("id,type,resumo,created_at,applied_at,error").eq("product_id", pid).is("applied_at", null).order("id", { ascending: true }).limit(500),
+  ]);
+  if (!p) return null;
+  return { p, recentes: (recentes ?? []) as OpRow[], pend: (pend ?? []) as OpRow[], campos: construirCampos(p.bot_data?.campos, (pend ?? []) as OpRow[]) };
+}
+const vistaCampos = (v: NonNullable<Awaited<ReturnType<typeof carregarCampos>>>, campos: CampoView[] = v.campos, extra: OpRow[] = []) =>
+  ({ product: { id: v.p.id, name: v.p.name }, fields: campos, ops: [...extra, ...v.recentes].slice(0, 40).map(opVista), max_fields: MAX_FIELDS_PER_PRODUCT });
+const novaOp = (botId: string, pid: string, uid: string, type: string, payload: any, resumo: any) =>
+  db.from("product_ops").insert({ bot_id: botId, product_id: pid, type, payload, resumo, created_by: uid }).select("id,created_at").single();
+const CAMPOS_URL = /^\/api\/bots\/([^/]+)\/products\/([0-9a-f-]{36})\/fields$/;
 
 // ───────── painel (dono do bot ou admin) ─────────
 export const productRoutes: Route[] = [
@@ -171,9 +194,66 @@ export const productRoutes: Route[] = [
     await Promise.all([
       audit(o.uid!, "product.delete", m[1], { product_id: m[2], name: res.data.name }),
       db.from("products").delete().eq("bot_id", m[1]).lt("deleted_at", new Date(Date.now() - TOMBSTONE_DAYS * 864e5).toISOString()), // limpeza de exclusões antigas
+      db.from("product_ops").update({ applied_at: now, error: "produto_excluido", payload: {} }).eq("product_id", m[2]).is("applied_at", null), // o bot não precisa mais aplicar campos de um produto excluído
       hook ? syncProduct(res.data, "product.deleted") : Promise.resolve(), // com webhook o bot confirma na hora; sem webhook ele busca em ?pending=1 e dá ack
     ]);
     return json({ ok: true });
+  }],
+
+  // campos do produto
+  ["GET", CAMPOS_URL, async (req, m) => {
+    const o = await owner(req, m[1]); if (o.err) return o.err;
+    const v = await carregarCampos(m[1], m[2]); if (!v) return json({ error: "not_found" }, 404);
+    return json(vistaCampos(v));
+  }],
+  ["POST", CAMPOS_URL, async (req, m) => {
+    const g = writeGuard(req); if (g) return g;
+    const o = await owner(req, m[1]); if (o.err) return o.err;
+    if (tooFast(`campo:${o.uid}`, 40)) return json({ error: "rate_limited" }, 429);
+    if (Number(req.headers.get("content-length") ?? 0) > 20_000) return json({ error: "payload_too_large" }, 413);
+    const d = campoSchema.safeParse(await req.json().catch(() => null));
+    if (!d.success) { const fields: Record<string, string> = {}; for (const i of d.error.issues) fields[String(i.path[0])] ??= "invalid"; return json({ error: "validation_error", fields }, 422); }
+    const v = await carregarCampos(m[1], m[2]); if (!v) return json({ error: "not_found" }, 404);
+    if (v.campos.some((c) => mesmoNome(c.nome, d.data.nome))) return json({ error: "field_exists" }, 409);
+    if (v.campos.length >= MAX_FIELDS_PER_PRODUCT) return json({ error: "field_limit" }, 409);
+    const criado = Date.now();
+    const campo = { estoque: [], valor: d.data.valor, Nome: d.data.nome, desc: d.data.desc, emoji: d.data.emoji, criado }; // exatamente o formato do banco do bot
+    const resumo = { field: { nome: d.data.nome, desc: d.data.desc, valor: d.data.valor, emoji: d.data.emoji, criado } };
+    const [ins] = await Promise.all([novaOp(m[1], m[2], o.uid!, "field.create", { field: campo }, resumo), audit(o.uid!, "product.field.create", m[1], { product_id: m[2], nome: d.data.nome })]);
+    if (ins.error || !ins.data) { console.error("[fields] op", ins.error?.message); return json({ error: "internal_error" }, 500); }
+    const op: OpRow = { id: ins.data.id, type: "field.create", resumo, created_at: ins.data.created_at, applied_at: null, error: null };
+    return json(vistaCampos(v, aplicarOps(v.campos, [op], true), [op]), 201);
+  }],
+  ["DELETE", CAMPOS_URL, async (req, m) => {
+    const g = writeGuard(req); if (g) return g;
+    const o = await owner(req, m[1]); if (o.err) return o.err;
+    if (tooFast(`campo:${o.uid}`, 40)) return json({ error: "rate_limited" }, 429);
+    const nome = new URL(req.url).searchParams.get("nome")?.trim() ?? "";
+    const v = await carregarCampos(m[1], m[2]); if (!v) return json({ error: "not_found" }, 404);
+    const campo = v.campos.find((c) => mesmoNome(c.nome, nome)); if (!campo) return json({ error: "field_not_found" }, 404);
+    const resumo = { nome: campo.nome };
+    const [ins] = await Promise.all([novaOp(m[1], m[2], o.uid!, "field.delete", { nome: campo.nome }, resumo), audit(o.uid!, "product.field.delete", m[1], { product_id: m[2], nome: campo.nome })]);
+    if (ins.error || !ins.data) return json({ error: "internal_error" }, 500);
+    const op: OpRow = { id: ins.data.id, type: "field.delete", resumo, created_at: ins.data.created_at, applied_at: null, error: null };
+    return json(vistaCampos(v, aplicarOps(v.campos, [op], true), [op]));
+  }],
+  // estoque: infinito, 1 por 1, .txt (o painel manda o texto do arquivo) ou fantasma
+  ["POST", /^\/api\/bots\/([^/]+)\/products\/([0-9a-f-]{36})\/fields\/stock$/, async (req, m) => {
+    const g = writeGuard(req); if (g) return g;
+    const o = await owner(req, m[1]); if (o.err) return o.err;
+    if (tooFast(`estoque:${o.uid}`, 30)) return json({ error: "rate_limited" }, 429);
+    if (Number(req.headers.get("content-length") ?? 0) > 3_600_000) return json({ error: "payload_too_large" }, 413);
+    const d = estoqueSchema.safeParse(await req.json().catch(() => null));
+    if (!d.success) return json({ error: "validation_error", fields: Object.fromEntries(d.error.issues.map((i) => [String(i.path[0] ?? "mode"), "invalid"])) }, 422);
+    const v = await carregarCampos(m[1], m[2]); if (!v) return json({ error: "not_found" }, 404);
+    const campo = v.campos.find((c) => mesmoNome(c.nome, d.data.nome)); if (!campo) return json({ error: "field_not_found" }, 404);
+    const gen = gerarLinhas(d.data); if (!gen.ok) return json({ error: gen.error }, 422);
+    const resumo = { nome: campo.nome, count: gen.lines.length, infinito: gen.infinito, mode: d.data.mode };
+    const [ins] = await Promise.all([novaOp(m[1], m[2], o.uid!, "stock.add", { nome: campo.nome, lines: gen.lines }, resumo),
+      audit(o.uid!, "product.stock.add", m[1], { product_id: m[2], nome: campo.nome, mode: d.data.mode, count: gen.lines.length })]);
+    if (ins.error || !ins.data) { console.error("[fields] stock", ins.error?.message); return json({ error: "internal_error" }, 500); }
+    const op: OpRow = { id: ins.data.id, type: "stock.add", resumo, created_at: ins.data.created_at, applied_at: null, error: null };
+    return json(vistaCampos(v, aplicarOps(v.campos, [op], true), [op]), 201);
   }],
 
   ["POST", /^\/api\/bots\/([^/]+)\/products\/([0-9a-f-]{36})\/resend$/, async (req, m) => {
@@ -291,6 +371,18 @@ export async function handleDeleteProduct(req: Request, botId: string, key: stri
   return json({ result: "ok", removed: data.length });
 }
 
+/** Operações de campo/estoque que o bot ainda não confirmou, em ordem. Limitadas em quantidade e em linhas para a resposta não ficar gigante (`ops_more` avisa que tem mais). */
+async function opsPendentes(botId: string) {
+  const { data } = await db.from("product_ops").select("id,product_id,type,payload").eq("bot_id", botId).is("applied_at", null).order("id", { ascending: true }).limit(150);
+  const out: any[] = []; let linhas = 0, more = (data?.length ?? 0) >= 150;
+  for (const r of data ?? []) {
+    const n = Array.isArray(r.payload?.lines) ? r.payload.lines.length : 0;
+    if (out.length && (out.length >= 100 || linhas + n > 30_000)) { more = true; break; }
+    linhas += n; out.push({ id: r.id, product: r.product_id, type: r.type, ...r.payload });
+  }
+  return { ops: out, more };
+}
+
 /** GET /api/v1/apps/:botId/products — site → bot: lista o que o site tem. ?format=bot | ?pending=1 | ?since=ISO | ?include_deleted=1 */
 export async function handleGetProducts(req: Request, botId: string) {
   const a = await authenticate(req, botId); if (a.err) return a.err;
@@ -301,12 +393,33 @@ export async function handleGetProducts(req: Request, botId: string) {
   else if (!withGone) q = q.is("deleted_at", null);
   const since = sp.get("since");
   if (since && !Number.isNaN(Date.parse(since))) q = q.gte("updated_at", new Date(since).toISOString());
-  const { data, error } = await q;
+  const [{ data, error }, ops] = await Promise.all([q, pending ? opsPendentes(botId) : Promise.resolve({ ops: [], more: false })]);
   if (error) return json({ error: "internal_error" }, 500);
   const rows = data ?? [], active = rows.filter((r) => !r.deleted_at);
   const deleted = rows.filter((r) => r.deleted_at).map((r) => ({ site_id: r.id, external_id: r.external_id, name: r.name, deleted_at: r.deleted_at }));
-  if (sp.get("format") === "bot") return json({ format: "bot", count: active.length, products: toBotFormat(active), deleted });
-  return json({ format: "json", count: active.length, products: active.map(pub), deleted });
+  if (sp.get("format") === "bot") return json({ format: "bot", count: active.length, products: toBotFormat(active), deleted, ops: ops.ops, ops_more: ops.more });
+  return json({ format: "json", count: active.length, products: active.map(pub), deleted, ops: ops.ops, ops_more: ops.more });
+}
+
+/** O bot aplicou (ou não) as operações: marca como feitas e já reflete no resumo de campos do painel, sem esperar a próxima lista. */
+async function confirmarOps(botId: string, acks: { id: number; ok?: boolean; error?: string }[]) {
+  if (!acks.length) return { ok: 0, fail: 0 };
+  const { data: rows } = await db.from("product_ops").select("id,product_id,type,resumo,applied_at").eq("bot_id", botId).in("id", acks.map((a) => a.id));
+  const pend = (rows ?? []).filter((r) => !r.applied_at).sort((a, b) => a.id - b.id);
+  const por = new Map(acks.map((a) => [a.id, a])), now = new Date().toISOString();
+  const bons = pend.filter((r) => por.get(r.id)?.ok !== false), ruins = pend.filter((r) => por.get(r.id)?.ok === false);
+  for (const r of ruins) await db.from("product_ops").update({ applied_at: now, error: (por.get(r.id)?.error ?? "erro no bot").slice(0, 200), payload: {} }).eq("id", r.id);
+  const produtos = [...new Set(bons.map((r) => r.product_id as string))];
+  if (produtos.length) {
+    const { data: ps } = await db.from("products").select("id,bot_data").eq("bot_id", botId).in("id", produtos);
+    for (const p of ps ?? []) {
+      const base = (p.bot_data?.campos ?? []).map(campoDoSnapshot);
+      const novo = paraSnapshot(aplicarOps(base, bons.filter((r) => r.product_id === p.id), false));
+      await db.from("products").update({ bot_data: { config: p.bot_data?.config ?? {}, campos: novo, cupom: p.bot_data?.cupom ?? [] }, bot_hash: null }).eq("id", p.id);
+    }
+    await db.from("product_ops").update({ applied_at: now, payload: {} }).in("id", bons.map((r) => r.id)); // as linhas de estoque não precisam ficar guardadas
+  }
+  return { ok: bons.length, fail: ruins.length };
 }
 
 /** POST /api/v1/apps/:botId/products/ack — bot → site: "apliquei essas alterações do site" (edição, criação ou exclusão). */
@@ -315,7 +428,7 @@ export async function handleAckProducts(req: Request, botId: string) {
   const parsed = ackSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return json({ error: "validation_error", message: 'Envie {"site_ids": ["<uuid>"]} ou {"acks": [{"site_id": "<uuid>", "external_id": "...", "ok": true}]}.' }, 422);
   const items = [...(parsed.data.site_ids ?? []).map((site_id) => ({ site_id })), ...(parsed.data.acks ?? [])] as { site_id: string; external_id?: string; ok?: boolean; error?: string }[];
-  if (!items.length) return json({ error: "validation_error", message: "Nada para confirmar." }, 422);
+  if (!items.length && !parsed.data.ops?.length) return json({ error: "validation_error", message: "Nada para confirmar." }, 422);
   const { data: rows } = await db.from("products").select("id,deleted_at,banner_path").eq("bot_id", botId).in("id", items.map((i) => i.site_id));
   const byId = new Map((rows ?? []).map((r) => [r.id as string, r]));
   const arquivos: (string | null)[] = [];
@@ -333,5 +446,6 @@ export async function handleAckProducts(req: Request, botId: string) {
     if (r.error) failed++; else confirmed++;
   }
   await dropFiles(arquivos);
-  return json({ result: "ok", confirmed, removed, failed, unknown });
+  const o = await confirmarOps(botId, parsed.data.ops ?? []);
+  return json({ result: "ok", confirmed, removed, failed, unknown, ops_confirmed: o.ok, ops_failed: o.fail });
 }
